@@ -1,0 +1,71 @@
+version: "3.9"
+
+services:
+  # Base de datos MySQL (DB-LIMA-01)
+  db:
+    image: mysql:8.0
+    container_name: alesof-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root2026
+      MYSQL_DATABASE: app
+      MYSQL_USER: app
+      MYSQL_PASSWORD: "1234"
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 10s
+      retries: 5
+
+  # Backend FastAPI (APP-LIMA-01)
+  api:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    container_name: alesof-api
+    restart: always
+    environment:
+      DATABASE_URL: mysql+pymysql://app:1234@db:3306/app
+      SECRET_KEY: alesof-secret-key-2026-muy-segura
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ../api:/app
+
+  # Frontend Next.js (WEB-LIMA-01)
+  web:
+    build:
+      context: ../web
+      dockerfile: Dockerfile
+    container_name: alesof-web
+    restart: always
+    environment:
+      NEXT_PUBLIC_API_URL: http://api:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+  # Proxy Reverso Nginx (DMZ — 10.10.90.10)
+  nginx:
+    image: nginx:alpine
+    container_name: alesof-nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - web
+      - api
+
+volumes:
+  db_data:

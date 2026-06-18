@@ -78,13 +78,22 @@ def obtener(
 def crear(
     data: TicketCreate,
     db: Session = Depends(get_db),
-    _user: Usuario = Depends(get_current_user),
+    current_user: Usuario = Depends(get_current_user),
 ):
-    if not db.query(Cliente).filter(Cliente.id == data.cliente_id).first():
+    payload = data.model_dump()
+    if current_user.rol == "cliente":
+        cliente = db.query(Cliente).filter(Cliente.email == current_user.email).first()
+        if not cliente:
+            raise HTTPException(status_code=404, detail="Cliente asociado no encontrado")
+        payload["cliente_id"] = cliente.id
+        payload["tecnico_id"] = None
+        payload["estado"] = "abierto"
+
+    if not db.query(Cliente).filter(Cliente.id == payload["cliente_id"]).first():
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
-    if data.tecnico_id and not db.query(Empleado).filter(Empleado.id == data.tecnico_id).first():
+    if payload["tecnico_id"] and not db.query(Empleado).filter(Empleado.id == payload["tecnico_id"]).first():
         raise HTTPException(status_code=404, detail="Técnico no encontrado")
-    ticket = Ticket(**data.model_dump())
+    ticket = Ticket(**payload)
     db.add(ticket)
     db.commit()
     db.refresh(ticket)

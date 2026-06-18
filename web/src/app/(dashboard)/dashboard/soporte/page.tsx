@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import api from "@/lib/api";
 import { toast } from "sonner";
+import { getUser } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,6 +34,14 @@ interface Ticket {
   cliente_nombre: string | null;
   tecnico_nombre: string | null;
 }
+interface ClienteOption {
+  id: number;
+  nombre: string;
+}
+interface TecnicoOption {
+  id: number;
+  nombre: string;
+}
 
 const prioridadBadge: Record<string, { label: string; bg: string; color: string; dot: string }> = {
   baja:    { label: "Baja",    bg: "rgba(22,163,74,0.1)",  color: "#15803d", dot: "#16a34a" },
@@ -52,51 +62,75 @@ const emptyForm = {
 
 export default function SoportePage() {
   const [items, setItems]     = useState<Ticket[]>([]);
-  const [clientes, setClientes] = useState<{id: number; nombre: string}[]>([]);
-  const [tecnicos, setTecnicos] = useState<{id: number; nombre: string}[]>([]);
+  const [clientes, setClientes] = useState<ClienteOption[]>([]);
+  const [tecnicos, setTecnicos] = useState<TecnicoOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterEstado, setFilterEstado] = useState("");
+  const [filterPrioridad, setFilterPrioridad] = useState("");
   const [page, setPage]       = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Ticket | null>(null);
   const [form, setForm]       = useState(emptyForm);
   const [saving, setSaving]   = useState(false);
+  const user = getUser();
+  const isCliente = user?.rol === "cliente";
+  const canEdit = user?.rol === "administrador" || user?.rol === "supervisor" || user?.rol === "tecnico";
 
   const load = useCallback(async () => {
     try {
       const [tRes, cRes, eRes] = await Promise.all([
-        api.get("/api/soporte/", { params: { estado: filterEstado, page, limit: 10 } }),
+        api.get("/api/soporte/", { params: { estado: filterEstado, prioridad: filterPrioridad, page, limit: 10 } }),
         api.get("/api/clientes/", { params: { limit: 100 } }).catch(() => ({ data: [] })),
         api.get("/api/empleados/", { params: { departamento: "Soporte", limit: 50 } }).catch(() => ({ data: [] })),
       ]);
       setItems(tRes.data);
-      setClientes(cRes.data.map((c: any) => ({ id: c.id, nombre: c.nombre })));
-      setTecnicos(eRes.data.map((e: any) => ({ id: e.id, nombre: e.nombre })));
+      setClientes((cRes.data as ClienteOption[]).map((c) => ({ id: c.id, nombre: c.nombre })));
+      setTecnicos((eRes.data as TecnicoOption[]).map((e) => ({ id: e.id, nombre: e.nombre })));
     } catch { toast.error("Error al cargar tickets"); }
     finally { setLoading(false); }
-  }, [filterEstado, page]);
+  }, [filterEstado, filterPrioridad, page]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [load]);
 
   function openCreate() { setEditing(null); setForm(emptyForm); setDialogOpen(true); }
   function openEdit(t: Ticket) {
+    if (!canEdit) {
+      toast.info("Tu rol puede crear y consultar tickets, pero no modificarlos.");
+      return;
+    }
     setEditing(t);
     setForm({ titulo: t.titulo, descripcion: t.descripcion,
       cliente_id: String(t.cliente_id), tecnico_id: t.tecnico_id ? String(t.tecnico_id) : "",
       prioridad: t.prioridad, estado: t.estado });
     setDialogOpen(true);
   }
+  const hasFilters = filterEstado || filterPrioridad;
 
   async function handleSubmit(ev: React.FormEvent) {
     ev.preventDefault(); setSaving(true);
     try {
+      if (!editing && !isCliente && !form.cliente_id) {
+        toast.error("Selecciona un cliente para crear el ticket");
+        setSaving(false);
+        return;
+      }
       const payload = editing
         ? { titulo: form.titulo, descripcion: form.descripcion, tecnico_id: form.tecnico_id ? parseInt(form.tecnico_id) : null, prioridad: form.prioridad, estado: form.estado }
-        : { titulo: form.titulo, descripcion: form.descripcion, cliente_id: parseInt(form.cliente_id), tecnico_id: form.tecnico_id ? parseInt(form.tecnico_id) : null, prioridad: form.prioridad, estado: form.estado };
+        : {
+            titulo: form.titulo,
+            descripcion: form.descripcion,
+            cliente_id: isCliente ? 0 : parseInt(form.cliente_id),
+            tecnico_id: isCliente ? null : form.tecnico_id ? parseInt(form.tecnico_id) : null,
+            prioridad: form.prioridad,
+            estado: isCliente ? "abierto" : form.estado,
+          };
       if (editing) { await api.put(`/api/soporte/${editing.id}`, payload); toast.success("Ticket actualizado"); }
       else         { await api.post("/api/soporte/", payload);             toast.success("Ticket creado"); }
       setDialogOpen(false); load();
-    } catch (err: any) { toast.error(err.response?.data?.detail || "Error al guardar"); }
+    } catch (err: unknown) { toast.error(getErrorMessage(err, "Error al guardar")); }
     finally { setSaving(false); }
   }
 
@@ -114,8 +148,8 @@ export default function SoportePage() {
             <p style={{ fontSize: 12, color: "#64748b", marginTop: 1 }}>Gestión de tickets de incidencias</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Select value={filterEstado} onValueChange={v => { setFilterEstado(v === "todos" ? "" : v); setPage(1); }}>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Select value={filterEstado || "todos"} onValueChange={v => { setFilterEstado(v === "todos" ? "" : v); setPage(1); }}>
             <SelectTrigger className="w-36 h-10 rounded-xl text-sm border-slate-200">
               <SelectValue placeholder="Filtrar estado" />
             </SelectTrigger>
@@ -127,9 +161,29 @@ export default function SoportePage() {
               <SelectItem value="cerrado">Cerrado</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={filterPrioridad || "todos"} onValueChange={v => { setFilterPrioridad(v === "todos" ? "" : v); setPage(1); }}>
+            <SelectTrigger className="h-10 w-36 rounded-xl border-slate-200 text-sm">
+              <SelectValue placeholder="Prioridad" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Toda prioridad</SelectItem>
+              <SelectItem value="baja">Baja</SelectItem>
+              <SelectItem value="media">Media</SelectItem>
+              <SelectItem value="alta">Alta</SelectItem>
+              <SelectItem value="crítica">Crítica</SelectItem>
+            </SelectContent>
+          </Select>
+          <button
+            type="button"
+            disabled={!hasFilters}
+            onClick={() => { setFilterEstado(""); setFilterPrioridad(""); setPage(1); }}
+            className="h-10 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Limpiar
+          </button>
           <Button onClick={openCreate}
             style={{ background: "#1e3a5f", color: "#fff", fontWeight: 600, borderRadius: 12, height: 40, paddingLeft: 18, paddingRight: 18, boxShadow: "0 4px 12px rgba(30,58,95,0.25)" }}
-            className="hover:brightness-110 transition-all gap-1.5">
+            className="gap-1.5">
             <Plus className="h-4 w-4" /> Nuevo Ticket
           </Button>
         </div>
@@ -149,7 +203,7 @@ export default function SoportePage() {
                 <TableHead className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 hidden md:table-cell">Técnico</TableHead>
                 <TableHead className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Prioridad</TableHead>
                 <TableHead className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Estado</TableHead>
-                <TableHead className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 text-right pr-5">Acciones</TableHead>
+                {canEdit && <TableHead className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 text-right pr-5">Acciones</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -184,18 +238,20 @@ export default function SoportePage() {
                         </span>
                       )}
                     </TableCell>
-                    <TableCell className="text-right pr-5">
-                      <button onClick={() => openEdit(t)}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-slate-100 transition-colors text-slate-400 hover:text-slate-700 ml-auto">
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                    </TableCell>
+                    {canEdit && (
+                      <TableCell className="text-right pr-5">
+                        <button onClick={() => openEdit(t)}
+                          className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 );
               })}
               {items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-16 text-center">
+                  <TableCell colSpan={canEdit ? 7 : 6} className="py-16 text-center">
                     <Headset className="h-8 w-8 text-slate-200 mx-auto mb-3" />
                     <p className="text-sm font-medium text-slate-400">No hay tickets registrados</p>
                   </TableCell>
@@ -243,7 +299,7 @@ export default function SoportePage() {
               <Textarea value={form.descripcion} onChange={e => setForm({...form, descripcion: e.target.value})}
                 rows={3} required className="rounded-xl text-sm" />
             </div>
-            {!editing && (
+            {!editing && !isCliente && (
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold text-slate-600">Cliente</Label>
                 <Select value={form.cliente_id} onValueChange={v => setForm({...form, cliente_id: v})}>
@@ -252,17 +308,24 @@ export default function SoportePage() {
                 </Select>
               </div>
             )}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-600">Técnico</Label>
-                <Select value={form.tecnico_id || "none"} onValueChange={v => setForm({...form, tecnico_id: v === "none" ? "" : v})}>
-                  <SelectTrigger className="h-10 rounded-xl text-sm"><SelectValue placeholder="Sin asignar" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Sin asignar</SelectItem>
-                    {tecnicos.map(t => <SelectItem key={t.id} value={String(t.id)}>{t.nombre}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+            {!editing && isCliente && (
+              <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs font-medium text-blue-700">
+                El ticket se asociará automáticamente a tu cuenta de cliente.
               </div>
+            )}
+            <div className="grid grid-cols-3 gap-3">
+              {!isCliente && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-600">Técnico</Label>
+                  <Select value={form.tecnico_id || "none"} onValueChange={v => setForm({...form, tecnico_id: v === "none" ? "" : v})}>
+                    <SelectTrigger className="h-10 rounded-xl text-sm"><SelectValue placeholder="Sin asignar" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sin asignar</SelectItem>
+                      {tecnicos.map(t => <SelectItem key={t.id} value={String(t.id)}>{t.nombre}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold text-slate-600">Prioridad</Label>
                 <Select value={form.prioridad} onValueChange={v => setForm({...form, prioridad: v})}>
@@ -275,18 +338,20 @@ export default function SoportePage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-600">Estado</Label>
-                <Select value={form.estado} onValueChange={v => setForm({...form, estado: v})}>
-                  <SelectTrigger className="h-10 rounded-xl text-sm"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="abierto">Abierto</SelectItem>
-                    <SelectItem value="en_proceso">En proceso</SelectItem>
-                    <SelectItem value="resuelto">Resuelto</SelectItem>
-                    <SelectItem value="cerrado">Cerrado</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {!isCliente && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-600">Estado</Label>
+                  <Select value={form.estado} onValueChange={v => setForm({...form, estado: v})}>
+                    <SelectTrigger className="h-10 rounded-xl text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="abierto">Abierto</SelectItem>
+                      <SelectItem value="en_proceso">En proceso</SelectItem>
+                      <SelectItem value="resuelto">Resuelto</SelectItem>
+                      <SelectItem value="cerrado">Cerrado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}

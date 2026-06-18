@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import api from "@/lib/api";
 import { toast } from "sonner";
+import { getErrorMessage } from "@/lib/utils";
+import { getUser } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,6 +41,7 @@ const emptyForm = {
   sede: "Lima", plan: "Básico 50Mbps", estado: "activo",
   fecha_contrato: new Date().toISOString().split("T")[0],
 };
+type ClienteForm = typeof emptyForm;
 
 const estadoBadge: Record<string, { label: string; bg: string; color: string; dot: string }> = {
   activo:     { label: "Activo",     bg: "rgba(22,163,74,0.1)",  color: "#15803d", dot: "#16a34a" },
@@ -50,24 +53,50 @@ export default function ClientesPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState("");
+  const [filterSede, setFilterSede] = useState("todos");
+  const [filterEstado, setFilterEstado] = useState("todos");
   const [page, setPage]         = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing]   = useState<Cliente | null>(null);
   const [form, setForm]         = useState(emptyForm);
   const [saving, setSaving]     = useState(false);
+  const user = getUser();
+  const canWrite = user?.rol === "administrador" || user?.rol === "supervisor";
+  const canDelete = user?.rol === "administrador";
 
   const load = useCallback(async () => {
     try {
-      const { data } = await api.get("/api/clientes/", { params: { search, page, limit: 10 } });
+      const { data } = await api.get("/api/clientes/", {
+        params: {
+          search,
+          sede: filterSede === "todos" ? "" : filterSede,
+          estado: filterEstado === "todos" ? "" : filterEstado,
+          page,
+          limit: 10,
+        },
+      });
       setClientes(data);
     } catch { toast.error("Error al cargar clientes"); }
     finally   { setLoading(false); }
-  }, [search, page]);
+  }, [search, filterSede, filterEstado, page]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [load]);
 
-  function openCreate() { setEditing(null); setForm(emptyForm); setDialogOpen(true); }
+  function openCreate() {
+    if (!canWrite) {
+      toast.info("Tu rol solo permite consultar clientes.");
+      return;
+    }
+    setEditing(null); setForm(emptyForm); setDialogOpen(true);
+  }
   function openEdit(c: Cliente) {
+    if (!canWrite) {
+      toast.info("Tu rol solo permite consultar clientes.");
+      return;
+    }
     setEditing(c);
     setForm({ nombre: c.nombre, ruc: c.ruc, email: c.email, telefono: c.telefono,
       sede: c.sede, plan: c.plan, estado: c.estado, fecha_contrato: c.fecha_contrato });
@@ -81,7 +110,7 @@ export default function ClientesPage() {
       if (editing) { await api.put(`/api/clientes/${editing.id}`, form); toast.success("Cliente actualizado"); }
       else         { await api.post("/api/clientes/", form);             toast.success("Cliente creado"); }
       setDialogOpen(false); load();
-    } catch (err: any) { toast.error(err.response?.data?.detail || "Error al guardar"); }
+    } catch (err: unknown) { toast.error(getErrorMessage(err, "Error al guardar")); }
     finally { setSaving(false); }
   }
 
@@ -91,8 +120,18 @@ export default function ClientesPage() {
       await api.delete(`/api/clientes/${id}`);
       toast.success("Cliente eliminado");
       load();
-    } catch (err: any) { toast.error(err.response?.data?.detail || "Error al eliminar"); }
+    } catch (err: unknown) { toast.error(getErrorMessage(err, "Error al eliminar")); }
   }
+
+  const textFields: Array<{ label: string; field: keyof ClienteForm; type: string; maxLength?: number }> = [
+    { label: "Nombre", field: "nombre", type: "text" },
+    { label: "RUC", field: "ruc", type: "text", maxLength: 11 },
+  ];
+  const contactFields: Array<{ label: string; field: keyof ClienteForm; type: string }> = [
+    { label: "Email", field: "email", type: "email" },
+    { label: "Teléfono", field: "telefono", type: "text" },
+  ];
+  const hasFilters = search || filterSede !== "todos" || filterEstado !== "todos";
 
   return (
     <div className="space-y-5">
@@ -108,20 +147,48 @@ export default function ClientesPage() {
             <p style={{ fontSize: 12, color: "#64748b", marginTop: 1 }}>Gestión de clientes empresariales</p>
           </div>
         </div>
-        <Button onClick={openCreate}
-          style={{ background: "#1e3a5f", color: "#fff", fontWeight: 600, borderRadius: 12, height: 40, paddingLeft: 18, paddingRight: 18, boxShadow: "0 4px 12px rgba(30,58,95,0.25)" }}
-          className="hover:brightness-110 transition-all gap-1.5">
-          <Plus className="h-4 w-4" /> Nuevo Cliente
-        </Button>
+        {canWrite && (
+          <Button onClick={openCreate}
+            style={{ background: "#1e3a5f", color: "#fff", fontWeight: 600, borderRadius: 12, height: 40, paddingLeft: 18, paddingRight: 18, boxShadow: "0 4px 12px rgba(30,58,95,0.25)" }}
+            className="gap-1.5">
+            <Plus className="h-4 w-4" /> Nuevo Cliente
+          </Button>
+        )}
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-        <Input placeholder="Buscar por nombre o RUC..."
-          className="pl-9 h-10 rounded-xl border-slate-200 bg-white text-sm"
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+      {/* Filtros */}
+      <div className="rounded-2xl border border-slate-200/70 bg-white p-3 shadow-sm">
+        <div className="grid gap-3 md:grid-cols-[1fr_180px_180px_auto]">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input placeholder="Buscar por nombre o RUC..."
+              className="h-11 rounded-xl border-slate-200 bg-slate-50 pl-9 text-sm"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+          </div>
+          <Select value={filterSede} onValueChange={(value) => { setFilterSede(value); setPage(1); }}>
+            <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-slate-50 text-sm"><SelectValue placeholder="Sede" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todas las sedes</SelectItem>
+              {sedesOpts.map((sede) => <SelectItem key={sede} value={sede}>{sede}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={filterEstado} onValueChange={(value) => { setFilterEstado(value); setPage(1); }}>
+            <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-slate-50 text-sm"><SelectValue placeholder="Estado" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos los estados</SelectItem>
+              {estadosOpts.map((estado) => <SelectItem key={estado} value={estado} className="capitalize">{estado}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <button
+            type="button"
+            disabled={!hasFilters}
+            onClick={() => { setSearch(""); setFilterSede("todos"); setFilterEstado("todos"); setPage(1); }}
+            className="h-11 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Limpiar
+          </button>
+        </div>
       </div>
 
       {/* Table card */}
@@ -138,7 +205,7 @@ export default function ClientesPage() {
                 <TableHead className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 hidden lg:table-cell">Sede</TableHead>
                 <TableHead className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 hidden lg:table-cell">Plan</TableHead>
                 <TableHead className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Estado</TableHead>
-                <TableHead className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 text-right pr-5">Acciones</TableHead>
+                {canWrite && <TableHead className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 text-right pr-5">Acciones</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -163,24 +230,28 @@ export default function ClientesPage() {
                         </span>
                       )}
                     </TableCell>
-                    <TableCell className="text-right pr-5">
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => openEdit(c)}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-slate-100 transition-colors text-slate-400 hover:text-slate-700">
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                        <button onClick={() => handleDelete(c.id)}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-red-50 transition-colors text-slate-400 hover:text-red-600">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </TableCell>
+                    {canWrite && (
+                      <TableCell className="text-right pr-5">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => openEdit(c)}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          {canDelete && (
+                            <button onClick={() => handleDelete(c.id)}
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 );
               })}
               {clientes.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-16 text-center">
+                  <TableCell colSpan={canWrite ? 7 : 6} className="py-16 text-center">
                     <Users className="h-8 w-8 text-slate-200 mx-auto mb-3" />
                     <p className="text-sm font-medium text-slate-400">No se encontraron clientes</p>
                   </TableCell>
@@ -219,19 +290,19 @@ export default function ClientesPage() {
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4 mt-1">
             <div className="grid grid-cols-2 gap-3">
-              {[["Nombre", "nombre", "text"], ["RUC", "ruc", "text"]].map(([label, field, type]) => (
+              {textFields.map(({ label, field, type, maxLength }) => (
                 <div key={field} className="space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-600">{label}</Label>
-                  <Input value={(form as any)[field]} onChange={e => setForm({...form, [field]: e.target.value})}
-                    type={type} required className="h-10 rounded-xl text-sm" maxLength={field === "ruc" ? 11 : undefined} />
+                  <Input value={form[field]} onChange={e => setForm({...form, [field]: e.target.value})}
+                    type={type} required className="h-10 rounded-xl text-sm" maxLength={maxLength} />
                 </div>
               ))}
             </div>
             <div className="grid grid-cols-2 gap-3">
-              {[["Email", "email", "email"], ["Teléfono", "telefono", "text"]].map(([label, field, type]) => (
+              {contactFields.map(({ label, field, type }) => (
                 <div key={field} className="space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-600">{label}</Label>
-                  <Input value={(form as any)[field]} onChange={e => setForm({...form, [field]: e.target.value})}
+                  <Input value={form[field]} onChange={e => setForm({...form, [field]: e.target.value})}
                     type={type} required className="h-10 rounded-xl text-sm" />
                 </div>
               ))}

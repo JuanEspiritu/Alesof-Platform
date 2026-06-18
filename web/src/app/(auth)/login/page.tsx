@@ -5,11 +5,34 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import api from "@/lib/api";
-import { setAuth } from "@/lib/auth";
+import { setAuth, type User } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Network, Loader2, Eye, EyeOff, ArrowLeft } from "lucide-react";
+import {
+  ArrowLeft,
+  Building2,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Loader2,
+  LockKeyhole,
+  Network,
+  ShieldCheck,
+} from "lucide-react";
+
+const demoUsers = [
+  { email: "admin@alesof.pe", pass: "Admin2026*", rol: "Admin" },
+  { email: "supervisor@alesof.pe", pass: "Super2026*", rol: "Supervisor" },
+  { email: "tecnico@alesof.pe", pass: "Tecnico2026*", rol: "Tecnico" },
+];
+
+const roleHome: Record<User["rol"], string> = {
+  administrador: "/dashboard",
+  supervisor: "/dashboard",
+  tecnico: "/dashboard/soporte",
+  cliente: "/dashboard/soporte",
+};
 
 export default function LoginPage() {
   const router = useRouter();
@@ -24,165 +47,137 @@ export default function LoginPage() {
     try {
       const { data } = await api.post("/api/auth/login", { email, password });
       setAuth(data.access_token, data.refresh_token, data.user);
-      toast.success(`Bienvenido, ${data.user.nombre.split(" ")[0]}`);
-      router.push("/dashboard");
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || "Credenciales incorrectas");
+      toast.success(`Sesion iniciada: ${data.user.nombre.split(" ")[0]}`);
+      router.push(roleHome[data.user.rol as User["rol"]] ?? "/dashboard/soporte");
+    } catch (err: unknown) {
+      const message = err && typeof err === "object" && "response" in err
+        ? (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+        : undefined;
+      toast.error(message || "Credenciales incorrectas");
     } finally {
       setLoading(false);
     }
   }
 
+  function fillDemoCredentials(user: (typeof demoUsers)[number]) {
+    setEmail(user.email);
+    setPassword(user.pass);
+  }
+
   return (
-    <div className="flex min-h-screen">
-      {/* Panel izquierdo */}
-      <div
-        className="hidden lg:flex lg:w-1/2 flex-col justify-between p-12 relative overflow-hidden"
-        style={{ background: "linear-gradient(135deg, #0a1628 0%, #0f1f33 45%, #162840 100%)" }}
+    <main className="relative min-h-screen overflow-hidden bg-[#eef3f7] px-4 py-8 text-slate-950">
+      <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(15,31,51,0.08),rgba(15,118,110,0.08)),linear-gradient(90deg,rgba(15,31,51,0.07)_1px,transparent_1px),linear-gradient(rgba(15,31,51,0.07)_1px,transparent_1px)] [background-size:100%_100%,64px_64px,64px_64px]" />
+      <div className="absolute inset-x-0 top-0 h-72 bg-[linear-gradient(180deg,rgba(15,31,51,0.16),transparent)]" />
+
+      <Link
+        href="/"
+        className="absolute left-5 top-5 z-20 flex h-11 items-center gap-2 rounded-full border border-white/80 bg-white/90 px-4 text-sm font-black text-slate-700 shadow-lg shadow-slate-950/10 backdrop-blur transition hover:-translate-x-0.5 hover:bg-white hover:text-slate-950"
+        aria-label="Volver a la landing"
+        title="Volver a la landing"
       >
-        {/* Grid decorativo */}
-        <div
-          className="absolute inset-0 opacity-[0.04]"
-          style={{ backgroundImage: "linear-gradient(#fff 1px,transparent 1px),linear-gradient(90deg,#fff 1px,transparent 1px)", backgroundSize: "40px 40px" }}
-        />
-        {/* Glow */}
-        <div className="absolute bottom-20 left-20 h-80 w-80 rounded-full bg-orange-500/10 blur-3xl" />
-        <div className="absolute top-20 right-0 h-60 w-60 rounded-full bg-blue-500/10 blur-3xl" />
+        <ArrowLeft className="h-5 w-5" />
+        <span className="hidden sm:inline">Volver</span>
+      </Link>
 
-        {/* Logo */}
-        <div className="relative flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500 shadow-xl shadow-orange-500/30">
-            <Network className="h-5 w-5 text-white" />
-          </div>
-          <div>
-            <p className="text-lg font-bold text-white">Alesof Perú</p>
-            <p className="text-[11px] text-slate-500">S.A.C.</p>
-          </div>
-        </div>
-
-        {/* Tagline */}
-        <div className="relative space-y-4">
-          <h2 className="text-4xl font-extrabold text-white leading-tight">
-            Plataforma de gestión
-            <span className="block text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-orange-300">
-              empresarial
-            </span>
-          </h2>
-          <p className="text-slate-400 text-sm leading-relaxed max-w-sm">
-            Gestiona clientes, infraestructura, soporte técnico y facturación desde un único panel centralizado.
-          </p>
-          {/* Feature bullets */}
-          <div className="space-y-2.5 pt-2">
-            {["Gestión de clientes y contratos", "Monitoreo de infraestructura", "Sistema de tickets de soporte", "Reportes y métricas en tiempo real"].map(f => (
-              <div key={f} className="flex items-center gap-2.5">
-                <div className="h-1.5 w-1.5 rounded-full bg-orange-500 flex-shrink-0" />
-                <span className="text-sm text-slate-400">{f}</span>
+      <section className="relative z-10 flex min-h-[calc(100vh-4rem)] items-center justify-center">
+        <div className="w-full max-w-[430px]">
+          <div className="overflow-hidden rounded-2xl border border-white/80 bg-white/92 shadow-2xl shadow-slate-950/12 backdrop-blur">
+            <div className="border-b border-slate-200/80 px-7 py-6 text-center">
+              <div className="mx-auto mb-4 flex h-13 w-13 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-lg shadow-slate-950/20">
+                <Network className="h-6 w-6" />
               </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Footer */}
-        <p className="relative text-xs text-slate-600">© 2026 Alesof Perú S.A.C.</p>
-      </div>
-
-      {/* Panel derecho */}
-      <div className="flex w-full lg:w-1/2 flex-col items-center justify-center bg-white px-6 py-12">
-        {/* Volver */}
-        <Link href="/" className="self-start mb-8 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors lg:hidden">
-          <ArrowLeft className="h-3.5 w-3.5" /> Volver al inicio
-        </Link>
-
-        <div className="w-full max-w-sm">
-          {/* Logo mobile */}
-          <div className="flex items-center gap-2.5 mb-8 lg:hidden">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#1e3a5f]">
-              <Network className="h-4.5 w-4.5 text-white" />
-            </div>
-            <span className="text-lg font-bold text-[#1e3a5f]">Alesof Platform</span>
-          </div>
-
-          <div className="mb-8">
-            <h1 className="text-2xl font-extrabold text-[#1e3a5f]">Iniciar sesión</h1>
-            <p className="text-sm text-muted-foreground mt-1.5">
-              Accede a tu panel de gestión empresarial
-            </p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-1.5">
-              <Label htmlFor="email" className="text-xs font-semibold text-foreground">
-                Correo electrónico
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="usuario@alesof.pe"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="h-11 rounded-xl border-border/70 focus:border-[#1e3a5f]/50 focus:ring-[#1e3a5f]/20"
-                required
-              />
+              <h1 className="text-2xl font-black tracking-tight text-slate-950">
+                Iniciar sesion en el Intranet
+              </h1>
+              <p className="mt-2 text-sm text-slate-500">
+                Usa tu correo registrado en la base de datos.
+              </p>
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="password" className="text-xs font-semibold text-foreground">
-                Contraseña
-              </Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPwd ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="h-11 rounded-xl border-border/70 pr-10 focus:border-[#1e3a5f]/50 focus:ring-[#1e3a5f]/20"
-                  required
-                />
-                <button
-                  type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  onClick={() => setShowPwd(!showPwd)}
-                >
-                  {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+            <form onSubmit={handleSubmit} className="space-y-4 px-7 py-6">
+              <div className="space-y-2">
+                <Label htmlFor="email" className="sr-only">Correo corporativo</Label>
+                <div className="relative">
+                  <Building2 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="Correo corporativo"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="h-12 rounded-xl border-slate-200 bg-slate-50 pl-10 text-sm shadow-none focus-visible:ring-slate-950/15"
+                    required
+                  />
+                </div>
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="password" className="sr-only">Contrasena</Label>
+                <div className="relative">
+                  <KeyRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    id="password"
+                    type={showPwd ? "text" : "password"}
+                    placeholder="Contrasena"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="h-12 rounded-xl border-slate-200 bg-slate-50 pl-10 pr-11 text-sm shadow-none focus-visible:ring-slate-950/15"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+                    onClick={() => setShowPwd(!showPwd)}
+                    aria-label={showPwd ? "Ocultar contrasena" : "Mostrar contrasena"}
+                  >
+                    {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <Button
+                type="submit"
+                className="h-12 w-full rounded-xl bg-slate-950 text-sm font-black text-white shadow-lg shadow-slate-950/15 hover:bg-slate-800"
+                disabled={loading}
+              >
+                {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LockKeyhole className="mr-2 h-4 w-4" />}
+                {loading ? "Verificando..." : "Iniciar sesion"}
+              </Button>
+
+              <button
+                type="button"
+                onClick={() => toast.info("Solicita el reinicio de contraseña al administrador del sistema.")}
+                className="w-full text-center text-xs font-bold text-teal-700 hover:text-teal-900"
+              >
+                Recuperar acceso
+              </button>
+            </form>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-white/80 bg-white/85 p-4 shadow-xl shadow-slate-950/8 backdrop-blur">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-teal-700" />
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Ambiente demo</p>
+              </div>
+              <p className="text-[11px] font-bold text-slate-400">Solo BD</p>
             </div>
-
-            <Button
-              type="submit"
-              className="h-11 w-full rounded-xl bg-[#1e3a5f] hover:bg-[#152d4a] font-semibold shadow-lg shadow-[#1e3a5f]/20"
-              disabled={loading}
-            >
-              {loading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : null}
-              {loading ? "Verificando..." : "Iniciar sesión"}
-            </Button>
-          </form>
-
-          {/* Credenciales demo */}
-          <div className="mt-8 rounded-xl border border-dashed border-border p-4 bg-muted/30">
-            <p className="text-[11px] font-semibold text-muted-foreground mb-2.5 uppercase tracking-wide">Credenciales de prueba</p>
-            <div className="space-y-1.5">
-              {[
-                { email: "admin@alesof.pe",      pass: "Admin2026*",   rol: "Administrador" },
-                { email: "supervisor@alesof.pe",  pass: "Super2026*",   rol: "Supervisor" },
-                { email: "tecnico@alesof.pe",     pass: "Tecnico2026*", rol: "Técnico" },
-              ].map((u) => (
+            <div className="grid gap-2 sm:grid-cols-3">
+              {demoUsers.map((user) => (
                 <button
-                  key={u.email}
+                  key={user.email}
                   type="button"
-                  onClick={() => { setEmail(u.email); setPassword(u.pass); }}
-                  className="flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-xs hover:bg-background transition-colors group"
+                  onClick={() => fillDemoCredentials(user)}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left transition hover:border-teal-300 hover:bg-teal-50"
                 >
-                  <span className="text-muted-foreground group-hover:text-foreground">{u.email}</span>
-                  <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{u.rol}</span>
+                  <p className="text-xs font-black text-slate-900">{user.rol}</p>
+                  <p className="mt-1 truncate text-[11px] text-slate-500">{user.email}</p>
                 </button>
               ))}
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }

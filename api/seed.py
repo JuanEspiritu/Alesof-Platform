@@ -27,18 +27,18 @@ def run_seed():
     db.flush()
 
     clientes = [
-        Cliente(nombre="Grupo Romero S.A.", ruc="20100023203", email="contacto@gruporomero.pe", telefono="01-6155000", sede="Lima", plan="Corporativo 1Gbps", estado="activo", fecha_contrato=date(2024, 3, 15)),
-        Cliente(nombre="Ferreyros S.A.A.", ruc="20100028698", email="info@ferreyros.com.pe", telefono="01-2115050", sede="Lima", plan="Premium 500Mbps", estado="activo", fecha_contrato=date(2024, 5, 20)),
-        Cliente(nombre="Alicorp S.A.A.", ruc="20100055237", email="redes@alicorp.com.pe", telefono="01-3150800", sede="Lima", plan="Corporativo 1Gbps", estado="activo", fecha_contrato=date(2024, 7, 10)),
-        Cliente(nombre="Minera Cerro Verde S.A.A.", ruc="20170072465", email="ti@cerroverde.pe", telefono="054-253500", sede="Arequipa", plan="Premium 500Mbps", estado="activo", fecha_contrato=date(2024, 1, 8)),
-        Cliente(nombre="Gloria S.A.", ruc="20100190797", email="soporte@gloria.com.pe", telefono="054-284010", sede="Arequipa", plan="Empresarial 200Mbps", estado="activo", fecha_contrato=date(2024, 9, 1)),
-        Cliente(nombre="Caja Arequipa", ruc="20100209641", email="infra@cajaarequipa.pe", telefono="054-380380", sede="Arequipa", plan="Corporativo 1Gbps", estado="activo", fecha_contrato=date(2025, 1, 15)),
-        Cliente(nombre="StartUp Tech Perú S.A.C.", ruc="20605432187", email="admin@startuptech.pe", telefono="01-7458900", sede="AWS", plan="Empresarial 200Mbps", estado="activo", fecha_contrato=date(2025, 3, 20)),
-        Cliente(nombre="Distribuidora Norte S.R.L.", ruc="20481023456", email="ti@distnorte.pe", telefono="044-298500", sede="AWS", plan="Básico 50Mbps", estado="activo", fecha_contrato=date(2025, 6, 1)),
-        Cliente(nombre="Consultores Andinos E.I.R.L.", ruc="20567891234", email="gerencia@consultandinos.pe", telefono="01-4567890", sede="Lima", plan="Básico 50Mbps", estado="suspendido", fecha_contrato=date(2024, 11, 10)),
-        Cliente(nombre="Red Médica del Sur S.A.", ruc="20398765432", email="sistemas@redmedicasur.pe", telefono="054-210300", sede="Arequipa", plan="Premium 500Mbps", estado="activo", fecha_contrato=date(2025, 2, 14)),
-        Cliente(nombre="Transportes Lima Express S.A.C.", ruc="20512345678", email="operaciones@limaexpress.pe", telefono="01-3456789", sede="Lima", plan="Empresarial 200Mbps", estado="activo", fecha_contrato=date(2025, 4, 5)),
-        Cliente(nombre="AgroExport Perú S.A.", ruc="20601234567", email="logistica@agroexport.pe", telefono="044-567890", sede="AWS", plan="Empresarial 200Mbps", estado="activo", fecha_contrato=date(2026, 1, 10)),
+        Cliente(nombre="Andes Mining Services S.A.C.", ruc="20610023451", email="noc@andesmining.pe", telefono="01-6124500", sede="Lima", plan="Corporativo 1Gbps", estado="activo", fecha_contrato=date(2024, 3, 15)),
+        Cliente(nombre="Clinica San Gabriel del Sur S.A.C.", ruc="20610023452", email="sistemas@clinicasangabriel.pe", telefono="01-4851200", sede="Lima", plan="Premium 500Mbps", estado="activo", fecha_contrato=date(2024, 5, 20)),
+        Cliente(nombre="Logistica Pacifico Norte S.R.L.", ruc="20610023453", email="infra@logisticapacifico.pe", telefono="01-3378800", sede="Lima", plan="Corporativo 1Gbps", estado="activo", fecha_contrato=date(2024, 7, 10)),
+        Cliente(nombre="Consorcio Minero Qhapaq S.A.C.", ruc="20610023454", email="ti@qhapaqmining.pe", telefono="054-253500", sede="Arequipa", plan="Premium 500Mbps", estado="activo", fecha_contrato=date(2024, 1, 8)),
+        Cliente(nombre="Agroindustrial Valle Sur S.A.C.", ruc="20610023455", email="soporte@vallesur.pe", telefono="054-284010", sede="Arequipa", plan="Empresarial 200Mbps", estado="activo", fecha_contrato=date(2024, 9, 1)),
+        Cliente(nombre="Cooperativa Digital Misti", ruc="20610023456", email="infra@digitalmisti.pe", telefono="054-380380", sede="Arequipa", plan="Corporativo 1Gbps", estado="activo", fecha_contrato=date(2025, 1, 15)),
+        Cliente(nombre="Nexa Cloud Retail S.A.C.", ruc="20610023457", email="cloudops@nexaretail.pe", telefono="01-7458900", sede="AWS", plan="Empresarial 200Mbps", estado="activo", fecha_contrato=date(2025, 3, 20)),
+        Cliente(nombre="Distribuciones Alto Norte S.R.L.", ruc="20610023458", email="ti@altonorte.pe", telefono="044-298500", sede="AWS", plan="Básico 50Mbps", estado="activo", fecha_contrato=date(2025, 6, 1)),
+        Cliente(nombre="Consultora Horizonte Andino E.I.R.L.", ruc="20610023459", email="gerencia@horizonteandino.pe", telefono="01-4567890", sede="Lima", plan="Básico 50Mbps", estado="suspendido", fecha_contrato=date(2024, 11, 10)),
+        Cliente(nombre="Red Salud Integral Sur S.A.C.", ruc="20610023460", email="sistemas@redsaludsur.pe", telefono="054-210300", sede="Arequipa", plan="Premium 500Mbps", estado="activo", fecha_contrato=date(2025, 2, 14)),
+        Cliente(nombre="Transporte Urbano Lima Este S.A.C.", ruc="20610023461", email="operaciones@tulesa.pe", telefono="01-3456789", sede="Lima", plan="Empresarial 200Mbps", estado="activo", fecha_contrato=date(2025, 4, 5)),
+        Cliente(nombre="Agroexportadora Costa Azul S.A.C.", ruc="20610023462", email="logistica@costaazul.pe", telefono="044-567890", sede="AWS", plan="Empresarial 200Mbps", estado="activo", fecha_contrato=date(2026, 1, 10)),
     ]
     db.add_all(clientes)
     db.flush()

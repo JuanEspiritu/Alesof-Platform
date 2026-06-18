@@ -20,6 +20,10 @@ def _to_response(f: Factura) -> dict:
 @router.get("/", response_model=list[FacturaResponse])
 def listar(
     estado: str = "",
+    search: str = "",
+    cliente_id: int | None = None,
+    fecha_desde: str = "",
+    fecha_hasta: str = "",
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
@@ -28,6 +32,14 @@ def listar(
     q = db.query(Factura)
     if estado:
         q = q.filter(Factura.estado == estado)
+    if cliente_id:
+        q = q.filter(Factura.cliente_id == cliente_id)
+    if search:
+        q = q.join(Cliente).filter((Factura.numero.ilike(f"%{search}%")) | (Cliente.nombre.ilike(f"%{search}%")))
+    if fecha_desde:
+        q = q.filter(Factura.fecha_emision >= fecha_desde)
+    if fecha_hasta:
+        q = q.filter(Factura.fecha_emision <= fecha_hasta)
     items = q.order_by(Factura.id.desc()).offset((page - 1) * limit).limit(limit).all()
     return [_to_response(f) for f in items]
 

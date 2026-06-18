@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import api from "@/lib/api";
 import { toast } from "sonner";
+import { getErrorMessage } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,12 +16,16 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Loader2, Receipt, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Pencil, Loader2, Receipt, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface Factura {
   id: number; cliente_id: number; numero: string; monto: number;
   fecha_emision: string; fecha_vencimiento: string; estado: string; cliente_nombre: string | null;
+}
+interface ClienteOption {
+  id: number;
+  nombre: string;
 }
 
 const estadoBadge: Record<string, { label: string; bg: string; color: string; dot: string }> = {
@@ -37,8 +42,13 @@ const emptyForm = {
 
 export default function FacturacionPage() {
   const [items, setItems]     = useState<Factura[]>([]);
-  const [clientes, setClientes] = useState<{id: number; nombre: string}[]>([]);
+  const [clientes, setClientes] = useState<ClienteOption[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [filterEstado, setFilterEstado] = useState("todos");
+  const [filterCliente, setFilterCliente] = useState("todos");
+  const [fechaDesde, setFechaDesde] = useState("");
+  const [fechaHasta, setFechaHasta] = useState("");
   const [page, setPage]       = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Factura | null>(null);
@@ -48,16 +58,29 @@ export default function FacturacionPage() {
   const load = useCallback(async () => {
     try {
       const [fRes, cRes] = await Promise.all([
-        api.get("/api/facturacion/", { params: { page, limit: 10 } }),
+        api.get("/api/facturacion/", {
+          params: {
+            search,
+            estado: filterEstado === "todos" ? "" : filterEstado,
+            cliente_id: filterCliente === "todos" ? undefined : Number(filterCliente),
+            fecha_desde: fechaDesde,
+            fecha_hasta: fechaHasta,
+            page,
+            limit: 10,
+          },
+        }),
         api.get("/api/clientes/", { params: { limit: 100 } }),
       ]);
       setItems(fRes.data);
-      setClientes(cRes.data.map((c: any) => ({ id: c.id, nombre: c.nombre })));
+      setClientes((cRes.data as ClienteOption[]).map((c) => ({ id: c.id, nombre: c.nombre })));
     } catch { toast.error("Error al cargar datos"); }
     finally { setLoading(false); }
-  }, [page]);
+  }, [search, filterEstado, filterCliente, fechaDesde, fechaHasta, page]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [load]);
 
   function openCreate() { setEditing(null); setForm(emptyForm); setDialogOpen(true); }
   function openEdit(f: Factura) {
@@ -76,12 +99,13 @@ export default function FacturacionPage() {
       if (editing) { await api.put(`/api/facturacion/${editing.id}`, payload); toast.success("Factura actualizada"); }
       else         { await api.post("/api/facturacion/", payload);              toast.success("Factura creada"); }
       setDialogOpen(false); load();
-    } catch (err: any) { toast.error(err.response?.data?.detail || "Error al guardar"); }
+    } catch (err: unknown) { toast.error(getErrorMessage(err, "Error al guardar")); }
     finally { setSaving(false); }
   }
 
   const totalMes = items.filter(f => f.estado === "pagado").reduce((acc, f) => acc + f.monto, 0);
   const pendientes = items.filter(f => f.estado === "pendiente").length;
+  const hasFilters = search || filterEstado !== "todos" || filterCliente !== "todos" || fechaDesde || fechaHasta;
 
   return (
     <div className="space-y-5">
@@ -117,6 +141,46 @@ export default function FacturacionPage() {
           <p style={{ fontSize: 20, fontWeight: 800, color: "#a16207", letterSpacing: "-0.02em", marginTop: 4 }}>
             {pendientes} facturas
           </p>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200/70 bg-white p-3 shadow-sm">
+        <div className="grid gap-3 xl:grid-cols-[1fr_170px_220px_150px_150px_auto]">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input
+              placeholder="Buscar por número o cliente..."
+              className="h-11 rounded-xl border-slate-200 bg-slate-50 pl-9 text-sm"
+              value={search}
+              onChange={(event) => { setSearch(event.target.value); setPage(1); }}
+            />
+          </div>
+          <Select value={filterEstado} onValueChange={(value) => { setFilterEstado(value); setPage(1); }}>
+            <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-slate-50 text-sm"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos los estados</SelectItem>
+              <SelectItem value="pendiente">Pendiente</SelectItem>
+              <SelectItem value="pagado">Pagado</SelectItem>
+              <SelectItem value="vencido">Vencido</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={filterCliente} onValueChange={(value) => { setFilterCliente(value); setPage(1); }}>
+            <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-slate-50 text-sm"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos los clientes</SelectItem>
+              {clientes.map((cliente) => <SelectItem key={cliente.id} value={String(cliente.id)}>{cliente.nombre}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Input type="date" value={fechaDesde} onChange={(event) => { setFechaDesde(event.target.value); setPage(1); }} className="h-11 rounded-xl border-slate-200 bg-slate-50 text-sm" />
+          <Input type="date" value={fechaHasta} onChange={(event) => { setFechaHasta(event.target.value); setPage(1); }} className="h-11 rounded-xl border-slate-200 bg-slate-50 text-sm" />
+          <button
+            type="button"
+            disabled={!hasFilters}
+            onClick={() => { setSearch(""); setFilterEstado("todos"); setFilterCliente("todos"); setFechaDesde(""); setFechaHasta(""); setPage(1); }}
+            className="h-11 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Limpiar
+          </button>
         </div>
       </div>
 

@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import api from "@/lib/api";
 import { toast } from "sonner";
+import { getUser } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +28,8 @@ interface Empleado {
 const departamentos = ["TI", "Soporte", "Ventas", "Administración", "Operaciones"];
 const sedesOpts     = ["Lima", "Arequipa", "AWS"];
 const emptyForm = { nombre: "", dni: "", email: "", cargo: "", departamento: "TI", sede: "Lima", estado: "activo" };
+type EmpleadoForm = typeof emptyForm;
+type SelectOption = string | { v: string; l: string };
 
 const estadoBadge: Record<string, { label: string; bg: string; color: string; dot: string }> = {
   activo:   { label: "Activo",   bg: "rgba(22,163,74,0.1)",   color: "#15803d", dot: "#16a34a" },
@@ -39,24 +43,49 @@ export default function EmpleadosPage() {
   const [items, setItems]     = useState<Empleado[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch]   = useState("");
+  const [filterDepartamento, setFilterDepartamento] = useState("todos");
+  const [filterSede, setFilterSede] = useState("todos");
   const [page, setPage]       = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Empleado | null>(null);
   const [form, setForm]       = useState(emptyForm);
   const [saving, setSaving]   = useState(false);
+  const user = getUser();
+  const canWrite = user?.rol === "administrador";
 
   const load = useCallback(async () => {
     try {
-      const { data } = await api.get("/api/empleados/", { params: { search, page, limit: 10 } });
+      const { data } = await api.get("/api/empleados/", {
+        params: {
+          search,
+          departamento: filterDepartamento === "todos" ? "" : filterDepartamento,
+          sede: filterSede === "todos" ? "" : filterSede,
+          page,
+          limit: 10,
+        },
+      });
       setItems(data);
     } catch { toast.error("Error al cargar empleados"); }
     finally { setLoading(false); }
-  }, [search, page]);
+  }, [search, filterDepartamento, filterSede, page]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [load]);
 
-  function openCreate() { setEditing(null); setForm(emptyForm); setDialogOpen(true); }
+  function openCreate() {
+    if (!canWrite) {
+      toast.info("Tu rol solo permite consultar empleados.");
+      return;
+    }
+    setEditing(null); setForm(emptyForm); setDialogOpen(true);
+  }
   function openEdit(e: Empleado) {
+    if (!canWrite) {
+      toast.info("Tu rol solo permite consultar empleados.");
+      return;
+    }
     setEditing(e);
     setForm({ nombre: e.nombre, dni: e.dni, email: e.email, cargo: e.cargo, departamento: e.departamento, sede: e.sede, estado: e.estado });
     setDialogOpen(true);
@@ -68,15 +97,22 @@ export default function EmpleadosPage() {
       if (editing) { await api.put(`/api/empleados/${editing.id}`, form); toast.success("Empleado actualizado"); }
       else         { await api.post("/api/empleados/", form);             toast.success("Empleado creado"); }
       setDialogOpen(false); load();
-    } catch (err: any) { toast.error(err.response?.data?.detail || "Error al guardar"); }
+    } catch (err: unknown) { toast.error(getErrorMessage(err, "Error al guardar")); }
     finally { setSaving(false); }
   }
 
   async function handleDelete(id: number) {
     if (!confirm("¿Eliminar este empleado?")) return;
     try { await api.delete(`/api/empleados/${id}`); toast.success("Empleado eliminado"); load(); }
-    catch (err: any) { toast.error(err.response?.data?.detail || "Error al eliminar"); }
+    catch (err: unknown) { toast.error(getErrorMessage(err, "Error al eliminar")); }
   }
+
+  const selectFields: Array<{ label: string; field: keyof EmpleadoForm; opts: SelectOption[] }> = [
+    { label: "Departamento", field: "departamento", opts: departamentos },
+    { label: "Sede", field: "sede", opts: sedesOpts },
+    { label: "Estado", field: "estado", opts: [{ v: "activo", l: "Activo" }, { v: "inactivo", l: "Inactivo" }] },
+  ];
+  const hasFilters = search || filterDepartamento !== "todos" || filterSede !== "todos";
 
   return (
     <div className="space-y-5">
@@ -91,18 +127,46 @@ export default function EmpleadosPage() {
             <p style={{ fontSize: 12, color: "#64748b", marginTop: 1 }}>Gestión del personal de Alesof</p>
           </div>
         </div>
-        <Button onClick={openCreate}
-          style={{ background: "#1e3a5f", color: "#fff", fontWeight: 600, borderRadius: 12, height: 40, paddingLeft: 18, paddingRight: 18, boxShadow: "0 4px 12px rgba(30,58,95,0.25)" }}
-          className="hover:brightness-110 transition-all gap-1.5">
-          <Plus className="h-4 w-4" /> Nuevo Empleado
-        </Button>
+        {canWrite && (
+          <Button onClick={openCreate}
+            style={{ background: "#1e3a5f", color: "#fff", fontWeight: 600, borderRadius: 12, height: 40, paddingLeft: 18, paddingRight: 18, boxShadow: "0 4px 12px rgba(30,58,95,0.25)" }}
+            className="gap-1.5">
+            <Plus className="h-4 w-4" /> Nuevo Empleado
+          </Button>
+        )}
       </div>
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-        <Input placeholder="Buscar por nombre o DNI..."
-          className="pl-9 h-10 rounded-xl border-slate-200 bg-white text-sm"
-          value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+      <div className="rounded-2xl border border-slate-200/70 bg-white p-3 shadow-sm">
+        <div className="grid gap-3 md:grid-cols-[1fr_190px_160px_auto]">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input placeholder="Buscar por nombre o DNI..."
+              className="h-11 rounded-xl border-slate-200 bg-slate-50 pl-9 text-sm"
+              value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+          </div>
+          <Select value={filterDepartamento} onValueChange={(value) => { setFilterDepartamento(value); setPage(1); }}>
+            <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-slate-50 text-sm"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos los departamentos</SelectItem>
+              {departamentos.map((departamento) => <SelectItem key={departamento} value={departamento}>{departamento}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={filterSede} onValueChange={(value) => { setFilterSede(value); setPage(1); }}>
+            <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-slate-50 text-sm"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todas las sedes</SelectItem>
+              {sedesOpts.map((sede) => <SelectItem key={sede} value={sede}>{sede}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <button
+            type="button"
+            disabled={!hasFilters}
+            onClick={() => { setSearch(""); setFilterDepartamento("todos"); setFilterSede("todos"); setPage(1); }}
+            className="h-11 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Limpiar
+          </button>
+        </div>
       </div>
 
       <div className="rounded-2xl border border-slate-200/70 bg-white shadow-sm overflow-hidden">
@@ -112,7 +176,7 @@ export default function EmpleadosPage() {
           <Table>
             <TableHeader>
               <TableRow className="bg-slate-50/80 hover:bg-slate-50/80">
-                {["Nombre","DNI","Email","Cargo","Depto.","Sede","Estado",""].map((h, i) => (
+                {["Nombre","DNI","Email","Cargo","Depto.","Sede","Estado", ...(canWrite ? [""] : [])].map((h, i) => (
                   <TableHead key={i}
                     className={`text-[11px] font-semibold uppercase tracking-wide text-slate-400 ${i === 0 ? "pl-5" : ""} ${i === 4 || i === 5 ? "hidden lg:table-cell" : ""} ${i === 2 ? "hidden md:table-cell" : ""} ${i === 7 ? "text-right pr-5" : ""}`}>
                     {h}
@@ -147,24 +211,26 @@ export default function EmpleadosPage() {
                         </span>
                       )}
                     </TableCell>
-                    <TableCell className="text-right pr-5">
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => openEdit(e)}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-slate-100 transition-colors text-slate-400 hover:text-slate-700">
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                        <button onClick={() => handleDelete(e.id)}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-red-50 transition-colors text-slate-400 hover:text-red-600">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </TableCell>
+                    {canWrite && (
+                      <TableCell className="text-right pr-5">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => openEdit(e)}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button onClick={() => handleDelete(e.id)}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 );
               })}
               {items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-16 text-center">
+                  <TableCell colSpan={canWrite ? 8 : 7} className="py-16 text-center">
                     <UserCog className="h-8 w-8 text-slate-200 mx-auto mb-3" />
                     <p className="text-sm font-medium text-slate-400">No se encontraron empleados</p>
                   </TableCell>
@@ -221,17 +287,13 @@ export default function EmpleadosPage() {
               </div>
             </div>
             <div className="grid grid-cols-3 gap-3">
-              {[
-                { label: "Departamento", field: "departamento", opts: departamentos },
-                { label: "Sede", field: "sede", opts: sedesOpts },
-                { label: "Estado", field: "estado", opts: [{ v: "activo", l: "Activo" }, { v: "inactivo", l: "Inactivo" }] as any },
-              ].map(({ label, field, opts }) => (
+              {selectFields.map(({ label, field, opts }) => (
                 <div key={field} className="space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-600">{label}</Label>
-                  <Select value={(form as any)[field]} onValueChange={v => setForm({...form, [field]: v})}>
+                  <Select value={form[field]} onValueChange={v => setForm({...form, [field]: v})}>
                     <SelectTrigger className="h-10 rounded-xl text-sm"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {opts.map((o: any) => typeof o === "string"
+                      {opts.map((o) => typeof o === "string"
                         ? <SelectItem key={o} value={o}>{o}</SelectItem>
                         : <SelectItem key={o.v} value={o.v}>{o.l}</SelectItem>)}
                     </SelectContent>

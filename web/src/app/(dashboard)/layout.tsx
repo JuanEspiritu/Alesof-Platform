@@ -1,213 +1,364 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
+import api from "@/lib/api";
 import { getUser, clearAuth, type User } from "@/lib/auth";
 import {
-  LayoutDashboard,
-  Users,
-  UserCog,
-  HardDrive,
-  Receipt,
-  Headset,
-  BarChart3,
-  LogOut,
-  Network,
-  Menu,
-  X,
-  ChevronRight,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
+  applyPreferences,
+  getPreferences,
+  savePreferences,
+  type AppPreferences,
+} from "@/lib/preferences";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import {
+  Activity,
+  AlertTriangle,
+  BarChart3,
+  Bell,
+  BriefcaseBusiness,
+  Building2,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  DatabaseBackup,
+  FileCheck2,
+  FolderKanban,
+  Headset,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  Network,
+  Receipt,
+  Server,
+  Settings,
+  ShieldCheck,
+  UserCog,
+  Users,
+  X,
+} from "lucide-react";
+
+interface NotificationItem {
+  id: string;
+  type: "critical" | "warning" | "info" | "success";
+  title: string;
+  message: string;
+  href: string;
+}
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["administrador", "supervisor"] },
+  { href: "/dashboard/noc", label: "NOC Live", icon: Activity, roles: ["administrador", "supervisor", "tecnico"] },
+  { href: "/dashboard/sedes", label: "Sedes", icon: Building2, roles: ["administrador", "supervisor", "tecnico"] },
+  { href: "/dashboard/servicios", label: "Servicios TI", icon: BriefcaseBusiness, roles: ["administrador", "supervisor", "tecnico"] },
+  { href: "/dashboard/contratos", label: "Contratos SLA", icon: FileCheck2, roles: ["administrador", "supervisor"] },
+  { href: "/dashboard/proyectos", label: "Proyectos", icon: FolderKanban, roles: ["administrador", "supervisor", "tecnico"] },
+  { href: "/dashboard/backups", label: "Backups", icon: DatabaseBackup, roles: ["administrador", "supervisor", "tecnico"] },
+  { href: "/dashboard/seguridad", label: "Seguridad", icon: ShieldCheck, roles: ["administrador", "supervisor", "tecnico"] },
   { href: "/dashboard/clientes", label: "Clientes", icon: Users, roles: ["administrador", "supervisor", "tecnico"] },
   { href: "/dashboard/empleados", label: "Empleados", icon: UserCog, roles: ["administrador", "supervisor"] },
-  { href: "/dashboard/inventario", label: "Inventario", icon: HardDrive, roles: ["administrador", "supervisor", "tecnico"] },
-  { href: "/dashboard/facturacion", label: "Facturación", icon: Receipt, roles: ["administrador", "supervisor"] },
+  { href: "/dashboard/inventario", label: "Inventario", icon: Server, roles: ["administrador", "supervisor", "tecnico"] },
+  { href: "/dashboard/facturacion", label: "Facturacion", icon: Receipt, roles: ["administrador", "supervisor"] },
   { href: "/dashboard/soporte", label: "Soporte", icon: Headset, roles: ["administrador", "supervisor", "tecnico", "cliente"] },
   { href: "/dashboard/reportes", label: "Reportes", icon: BarChart3, roles: ["administrador", "supervisor"] },
+  { href: "/dashboard/configuracion", label: "Configuracion", icon: Settings, roles: ["administrador", "supervisor", "tecnico", "cliente"] },
 ];
 
 const rolLabels: Record<string, string> = {
   administrador: "Administrador",
   supervisor: "Supervisor",
-  tecnico: "Técnico",
+  tecnico: "Tecnico",
   cliente: "Cliente",
 };
 
-const rolBadgeColors: Record<string, string> = {
-  administrador: "bg-orange-500/20 text-orange-300 border-orange-500/30",
-  supervisor: "bg-blue-500/20 text-blue-300 border-blue-500/30",
-  tecnico: "bg-green-500/20 text-green-300 border-green-500/30",
-  cliente: "bg-purple-500/20 text-purple-300 border-purple-500/30",
+const roleHome: Record<string, string> = {
+  administrador: "/dashboard",
+  supervisor: "/dashboard",
+  tecnico: "/dashboard/soporte",
+  cliente: "/dashboard/soporte",
+};
+
+const toneMap = {
+  critical: "border-red-200 bg-red-50 text-red-700",
+  warning: "border-amber-200 bg-amber-50 text-amber-700",
+  info: "border-sky-200 bg-sky-50 text-sky-700",
+  success: "border-emerald-200 bg-emerald-50 text-emerald-700",
 };
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [user, setUser] = useState<User | null>(null);
+  const [user] = useState<User | null>(() => getUser());
+  const [preferences, setPreferences] = useState<AppPreferences>(() => getPreferences());
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
   useEffect(() => {
-    const u = getUser();
-    if (!u) { router.push("/login"); return; }
-    setUser(u);
-  }, [router]);
+    applyPreferences(preferences);
+    window.dispatchEvent(new CustomEvent("alesof-preferences", { detail: preferences }));
+  }, [preferences]);
+
+  useEffect(() => {
+    const handlePreferences = (event: Event) => {
+      const next = (event as CustomEvent<AppPreferences>).detail;
+      if (next) setPreferences(next);
+    };
+    window.addEventListener("alesof-preferences", handlePreferences);
+    return () => window.removeEventListener("alesof-preferences", handlePreferences);
+  }, []);
+
+  useEffect(() => {
+    if (!user) router.push("/login");
+  }, [router, user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const allowed = navItems.filter((item) => item.roles.includes(user.rol));
+    const canViewCurrent = allowed.some(
+      (item) => pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href)),
+    );
+    if (!canViewCurrent && allowed[0]) {
+      router.replace(roleHome[user.rol] ?? allowed[0].href);
+    }
+  }, [pathname, router, user]);
+
+  useEffect(() => {
+    if (!user || !preferences.notificationsEnabled) return;
+    let active = true;
+    api.get("/api/reportes/notificaciones")
+      .then(({ data }) => {
+        if (active) setNotifications(data);
+      })
+      .catch(() => {
+        if (active) setNotifications([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [user, pathname, preferences.notificationsEnabled]);
+
+  if (!user) return null;
+
+  const collapsed = preferences.sidebarCollapsed;
+  const filteredNav = navItems.filter((item) => item.roles.includes(user.rol));
+  const currentNav = filteredNav.find(
+    (item) => pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href)),
+  );
+  const initials = user.nombre
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+  const activeAlerts = notifications.filter((item) => item.type === "critical" || item.type === "warning").length;
+  const status = !preferences.notificationsEnabled
+    ? { label: "Notificaciones pausadas", tone: "bg-slate-100 text-slate-600 border-slate-200" }
+    : notifications.some((item) => item.type === "critical")
+      ? { label: "Atencion requerida", tone: "bg-red-50 text-red-700 border-red-200" }
+      : notifications.some((item) => item.type === "warning")
+        ? { label: "Pendientes operativos", tone: "bg-amber-50 text-amber-700 border-amber-200" }
+        : { label: "Operacion estable", tone: "bg-emerald-50 text-emerald-700 border-emerald-200" };
+
+  function updatePreferences(next: Partial<AppPreferences>) {
+    const updated = { ...preferences, ...next };
+    setPreferences(updated);
+    savePreferences(updated);
+  }
 
   function handleLogout() {
     clearAuth();
     router.push("/login");
   }
 
-  if (!user) return null;
-
-  const filteredNav = navItems.filter((item) => item.roles.includes(user.rol));
-  const currentNav = filteredNav.find(
-    (n) => pathname === n.href || (n.href !== "/dashboard" && pathname.startsWith(n.href))
-  );
-
-  const initials = user.nombre
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-
   return (
-    <div className="flex h-screen overflow-hidden bg-[oklch(0.975_0.003_247)]">
-      {/* Overlay mobile */}
+    <div className="dashboard-shell min-h-screen text-[var(--app-text)]" style={{ background: "var(--app-bg)" }}>
       {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
+        <button
+          aria-label="Cerrar menu"
+          className="fixed inset-0 z-40 bg-slate-950/30 backdrop-blur-sm lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r shadow-xl shadow-slate-950/5 transition-all duration-300 lg:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
-        style={{ background: "linear-gradient(180deg, #0f1f33 0%, #1a2f4a 100%)" }}
+        } ${collapsed ? "lg:w-[84px]" : "lg:w-[280px]"} w-[280px]`}
+        style={{ background: "var(--app-surface)", borderColor: "var(--app-border)" }}
       >
-        {/* Logo */}
-        <div className="flex items-center justify-between px-5 py-5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-500 shadow-lg">
-              <Network className="h-5 w-5 text-white" />
+        <div className="flex h-16 items-center justify-between border-b px-5" style={{ borderColor: "var(--app-border)" }}>
+          <Link href="/dashboard" className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white" style={{ background: "var(--app-brand)" }}>
+              <Network className="h-5 w-5" />
             </div>
-            <div>
-              <span className="text-base font-bold text-white">Alesof</span>
-              <p className="text-[10px] text-slate-400 -mt-0.5">Perú S.A.C.</p>
-            </div>
-          </div>
-          <button
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-white/10 hover:text-white lg:hidden"
-            onClick={() => setSidebarOpen(false)}
-          >
-            <X className="h-5 w-5" />
+            {!collapsed && (
+              <div className="min-w-0">
+                <p className="truncate text-sm font-black leading-none">Alesof Platform</p>
+                <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--app-muted)" }}>Operaciones IT</p>
+              </div>
+            )}
+          </Link>
+          <button className="rounded-lg p-2 hover:opacity-80 lg:hidden" style={{ color: "var(--app-muted)" }} onClick={() => setSidebarOpen(false)}>
+            <X className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Divider */}
-        <div className="mx-5 h-px bg-white/10" />
+        <div className="flex items-center justify-between px-4 py-3">
+          {!collapsed && (
+            <p className="text-[11px] font-black uppercase tracking-[0.18em]" style={{ color: "var(--app-muted)" }}>
+              Modulos
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={() => updatePreferences({ sidebarCollapsed: !collapsed })}
+            className="hidden rounded-lg border p-2 hover:opacity-80 lg:flex"
+            style={{ background: "var(--app-surface-soft)", borderColor: "var(--app-border)", color: "var(--app-muted)" }}
+            title={collapsed ? "Mostrar modulos" : "Ocultar modulos"}
+          >
+            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          </button>
+        </div>
 
-        {/* Nav section label */}
-        <p className="mt-4 mb-1 px-5 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-          Navegación
-        </p>
-
-        {/* Nav items */}
-        <nav className="flex-1 space-y-0.5 px-3 pb-4">
+        <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-3">
           {filteredNav.map((item) => {
-            const active =
-              pathname === item.href ||
-              (item.href !== "/dashboard" && pathname.startsWith(item.href));
+            const active = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
             return (
               <Link
                 key={item.href}
                 href={item.href}
+                title={item.label}
                 onClick={() => setSidebarOpen(false)}
-                className={`group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-150 ${
-                  active
-                    ? "bg-orange-500 text-white shadow-lg shadow-orange-500/25"
-                    : "text-slate-400 hover:bg-white/8 hover:text-white"
-                }`}
+                className={`flex h-11 items-center gap-3 rounded-xl px-3 text-sm font-bold hover:opacity-90 ${
+                  active ? "shadow-sm" : ""
+                } ${collapsed ? "justify-center px-0" : ""}`}
+                style={active
+                  ? { background: "var(--app-brand)", color: "#ffffff" }
+                  : { color: "var(--app-muted)" }}
               >
-                <item.icon className={`h-4.5 w-4.5 flex-shrink-0 ${active ? "text-white" : "text-slate-500 group-hover:text-slate-300"}`} />
-                <span className="flex-1">{item.label}</span>
-                {active && <ChevronRight className="h-3.5 w-3.5 opacity-70" />}
+                <item.icon className="h-[18px] w-[18px] shrink-0" />
+                {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
+                {active && !collapsed && <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--app-accent)" }} />}
               </Link>
             );
           })}
         </nav>
 
-        {/* Bottom user card */}
-        <div className="mx-3 mb-4">
-          <div className="rounded-xl bg-white/6 p-3 border border-white/8">
-            <div className="flex items-center gap-3 mb-3">
-              <Avatar className="h-9 w-9 ring-2 ring-orange-500/40">
-                <AvatarFallback className="bg-gradient-to-br from-orange-500 to-orange-600 text-white text-xs font-bold">
-                  {initials}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-white truncate">{user.nombre.split(" ")[0]} {user.nombre.split(" ")[1]}</p>
-                <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium border ${rolBadgeColors[user.rol]}`}>
-                  {rolLabels[user.rol]}
-                </span>
+        <div className="border-t p-3" style={{ borderColor: "var(--app-border)" }}>
+          {!collapsed && (
+            <div className={`mb-3 rounded-xl border px-3 py-2 text-xs font-bold ${status.tone}`}>
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-current" />
+                <span>{status.label}</span>
               </div>
             </div>
+          )}
+          <div className={`flex items-center gap-3 rounded-xl p-3 ${collapsed ? "justify-center" : ""}`} style={{ background: "var(--app-surface-soft)" }}>
+            <Avatar className="h-9 w-9">
+              <AvatarFallback className="text-xs font-black text-white" style={{ background: "var(--app-brand)" }}>{initials}</AvatarFallback>
+            </Avatar>
+            {!collapsed && (
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-black">{user.nombre}</p>
+                <p className="text-xs font-semibold" style={{ color: "var(--app-muted)" }}>{rolLabels[user.rol]}</p>
+              </div>
+            )}
+          </div>
+          {!collapsed && (
             <button
               onClick={handleLogout}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-white/6 px-3 py-2 text-xs font-medium text-slate-400 hover:bg-red-500/15 hover:text-red-400 transition-colors"
+              className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-xl text-xs font-black hover:bg-red-50 hover:text-red-600"
+              style={{ color: "var(--app-muted)" }}
             >
-              <LogOut className="h-3.5 w-3.5" />
-              Cerrar sesión
+              <LogOut className="h-4 w-4" />
+              Cerrar sesion
             </button>
-          </div>
+          )}
         </div>
       </aside>
 
-      {/* Main content */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Topbar */}
-        <header className="flex h-14 items-center justify-between border-b border-border/60 bg-white/80 backdrop-blur-sm px-4 lg:px-6">
-          <div className="flex items-center gap-3">
-            <button
-              className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground lg:hidden"
-              onClick={() => setSidebarOpen(true)}
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground hidden sm:block">Panel /</span>
-              <h1 className="text-sm font-semibold text-foreground">
-                {currentNav?.label ?? "Panel"}
-              </h1>
+      <div className={`transition-all duration-300 ${collapsed ? "lg:pl-[84px]" : "lg:pl-[280px]"}`}>
+        <header className="sticky top-0 z-30 border-b px-4 backdrop-blur lg:px-7" style={{ background: "color-mix(in srgb, var(--app-surface) 92%, transparent)", borderColor: "var(--app-border)" }}>
+          <div className="flex h-16 items-center justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <button className="rounded-xl border p-2.5 shadow-sm lg:hidden" style={{ background: "var(--app-surface)", borderColor: "var(--app-border)", color: "var(--app-muted)" }} onClick={() => setSidebarOpen(true)}>
+                <Menu className="h-5 w-5" />
+              </button>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-xs font-bold" style={{ color: "var(--app-muted)" }}>
+                  Panel <ChevronRight className="h-3 w-3" /> {currentNav?.label ?? "Vista"}
+                </div>
+                <h1 className="mt-0.5 truncate text-xl font-black tracking-tight">{currentNav?.label ?? "Panel"}</h1>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="hidden sm:flex items-center gap-2 rounded-full bg-green-500/10 px-3 py-1 text-xs font-medium text-green-600 border border-green-500/20">
-              <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-              Sistema operativo
+
+            <div className="relative flex items-center gap-2">
+              <Badge className={`hidden rounded-full border px-3 py-1.5 sm:inline-flex ${status.tone}`}>
+                <span className="mr-2 h-1.5 w-1.5 rounded-full bg-current" />
+                {status.label}
+              </Badge>
+              <button
+                type="button"
+                onClick={() => setNotificationsOpen((open) => !open)}
+                className="relative flex h-10 w-10 items-center justify-center rounded-xl border shadow-sm hover:opacity-85"
+                style={{ background: "var(--app-surface)", borderColor: "var(--app-border)", color: "var(--app-muted)" }}
+                aria-label="Ver notificaciones"
+              >
+                <Bell className="h-4 w-4" />
+                {activeAlerts > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-black text-white">
+                    {activeAlerts}
+                  </span>
+                )}
+              </button>
+              <Avatar className="h-10 w-10 border-2 shadow-sm" style={{ borderColor: "var(--app-surface)" }}>
+                <AvatarFallback className="text-xs font-black text-white" style={{ background: "var(--app-brand)" }}>{initials}</AvatarFallback>
+              </Avatar>
+
+              {notificationsOpen && (
+                <div className="absolute right-0 top-12 z-50 w-[calc(100vw-2rem)] max-w-sm rounded-2xl border p-3 shadow-2xl shadow-slate-950/15" style={{ background: "var(--app-surface)", borderColor: "var(--app-border)" }}>
+                  <div className="flex items-center justify-between px-2 py-2">
+                    <div>
+                      <p className="text-sm font-black" style={{ color: "var(--app-text)" }}>Notificaciones</p>
+                      <p className="text-xs" style={{ color: "var(--app-muted)" }}>Eventos reales del sistema</p>
+                    </div>
+                    <button className="rounded-lg p-2 text-slate-400 hover:bg-slate-100" onClick={() => setNotificationsOpen(false)}>
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="max-h-96 space-y-2 overflow-y-auto p-1">
+                    {(preferences.notificationsEnabled ? notifications : []).map((item) => (
+                      <Link
+                        key={item.id}
+                        href={item.href}
+                        onClick={() => setNotificationsOpen(false)}
+                        className={`block rounded-xl border p-3 ${toneMap[item.type]}`}
+                      >
+                        <div className="flex items-start gap-3">
+                          {item.type === "critical" ? <AlertTriangle className="mt-0.5 h-4 w-4" /> : <CheckCircle2 className="mt-0.5 h-4 w-4" />}
+                          <div>
+                            <p className="text-sm font-black">{item.title}</p>
+                            <p className="mt-1 text-xs opacity-80">{item.message}</p>
+                          </div>
+                        </div>
+                      </Link>
+                    ))}
+                    {!preferences.notificationsEnabled && (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-500">
+                        Las notificaciones estan pausadas desde Configuracion.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-            <Avatar className="h-8 w-8 cursor-pointer ring-2 ring-orange-500/30">
-              <AvatarFallback className="bg-gradient-to-br from-[#1e3a5f] to-[#2d5087] text-white text-xs font-bold">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
           </div>
         </header>
 
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-          {children}
-        </main>
+        <main className="p-4 lg:p-6">{children}</main>
       </div>
     </div>
   );

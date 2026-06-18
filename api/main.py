@@ -1,14 +1,15 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from core.config import settings
 from core.database import Base, engine
-from routers import auth, clientes, empleados, facturacion, inventario, reportes, soporte
+from routers import auth, clientes, empleados, empresa, facturacion, inventario, reportes, soporte
 
 app = FastAPI(title="Alesof Platform API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -17,6 +18,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(clientes.router)
 app.include_router(empleados.router)
+app.include_router(empresa.router)
 app.include_router(inventario.router)
 app.include_router(facturacion.router)
 app.include_router(soporte.router)

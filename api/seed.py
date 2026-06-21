@@ -60,7 +60,7 @@ def run_seed():
         Equipo(nombre="Router Core Lima", tipo="router", marca="Cisco", modelo="ISR 4321", serie="FCW2345L0P1", sede="Lima", vlan="VLAN 10", ip="10.10.10.1", estado="activo"),
         Equipo(nombre="Switch Distribución Lima", tipo="switch", marca="Cisco", modelo="Catalyst 3850", serie="FOC2134Y8K2", sede="Lima", vlan="VLAN 20", ip="10.10.10.2", estado="activo"),
         Equipo(nombre="Servidor ESXi Lima 01", tipo="servidor", marca="Dell", modelo="PowerEdge R740", serie="ESXI-LIMA-01-HW", sede="Lima", vlan="VLAN 50", ip="172.17.25.23", estado="activo"),
-        Equipo(nombre="Servidor Zabbix", tipo="servidor", marca="Dell", modelo="PowerEdge R740", serie="DELL-R740-001", sede="Lima", vlan="VLAN 30", ip="10.10.30.20", estado="activo"),
+        Equipo(nombre="Servidor Zabbix", tipo="servidor", marca="Dell", modelo="PowerEdge R740", serie="DELL-R740-001", sede="Lima", vlan="VLAN 70", ip="10.10.70.10", estado="activo"),
         Equipo(nombre="Servidor MySQL", tipo="servidor", marca="Dell", modelo="PowerEdge R740", serie="DELL-R740-002", sede="Lima", vlan="VLAN 30", ip="10.10.30.30", estado="activo"),
         Equipo(nombre="Router Arequipa", tipo="router", marca="Cisco", modelo="ISR 2911", serie="FCW2345AQP1", sede="Arequipa", vlan="VLAN 10", ip="10.20.10.1", estado="activo"),
         Equipo(nombre="Switch Arequipa", tipo="switch", marca="Cisco", modelo="Catalyst 2960", serie="FOC2134AQP2", sede="Arequipa", vlan="VLAN 20", ip="10.20.10.2", estado="activo"),

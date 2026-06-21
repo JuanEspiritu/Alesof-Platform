@@ -110,6 +110,9 @@ Una simulacion genera evento, alerta, WebSocket y, cuando aplica, ticket automat
 
 ## Distribucion objetivo
 
+- `DB-LIMA-01`: `10.10.30.30`, MySQL en TCP `3306`.
+- `APP-LIMA-01`: `10.10.30.50`, API FastAPI en TCP `8000`.
+
 - ESXi-01 `172.17.25.23`: Router-Master, Router-Backup, Creador-ISP2, VC-LIMA-01, SW-LIMA-CORE-01 y SW-LIMA-CORE-02.
 - ESXi-02 `172.17.25.19`: AD-LIMA-01, DB-LIMA-01, DHCP-LIMA-01, GLPI-LIMA-01, PBX-LIMA-01 y ZABBIX-LIMA-01.
 - ESXi-03 `172.17.25.2`: APP-LIMA-01, FILE-LIMA-01, HAProxy, WEB-LIMA-01, MAIL-LIMA-01 y DNS2-LIMA-01.

@@ -53,6 +53,9 @@ def run_monitoring_seed():
         if ticket:
             ticket.titulo = "Alerta de capacidad en ESXi-01"
             ticket.descripcion = "El host ESXi-01 reporta consumo elevado de recursos y requiere revision del NOC."
+        legacy_zabbix = db.query(Equipo).filter(Equipo.nombre == "Servidor Zabbix", Equipo.ip == "10.10.30.20").first()
+        if legacy_zabbix:
+            legacy_zabbix.ip, legacy_zabbix.vlan = "10.10.70.10", "VLAN 70"
 
         sites = {}
         for name, code, cidr, kind, latency in [
@@ -119,6 +122,9 @@ def _seed_vms_and_services(db, sites, hypervisors):
             legacy.name = new_name
             db.flush()
     vms = {}
+    legacy_db_vm = db.query(VirtualMachine).filter(VirtualMachine.name == "DB-LIMA-01", VirtualMachine.ip == "10.10.30.20").first()
+    if legacy_db_vm:
+        legacy_db_vm.ip = "10.10.30.30"
     specs = [
         ("Router-Master", "ESXi-01", "10.10.10.2", "Ubuntu Server 22.04", 2, 4, 30, "VLAN10", "Gateway principal", "CRITICAL"),
         ("Router-Backup", "ESXi-01", "10.10.10.3", "Ubuntu Server 22.04", 2, 4, 30, "VLAN10", "Gateway de respaldo", "CRITICAL"),
@@ -127,7 +133,7 @@ def _seed_vms_and_services(db, sites, hypervisors):
         ("SW-LIMA-CORE-01", "ESXi-01", "10.10.10.11", "Virtual Network Appliance", 2, 4, 20, "VLAN10", "Switch core virtual", "CRITICAL"),
         ("SW-LIMA-CORE-02", "ESXi-01", "10.10.10.12", "Virtual Network Appliance", 2, 4, 20, "VLAN10", "Switch core virtual", "CRITICAL"),
         ("AD-LIMA-01", "ESXi-02", "10.10.30.10", "Windows Server 2022 (Data-WinServer)", 4, 8, 100, "VLAN30", "Active Directory", "CRITICAL"),
-        ("DB-LIMA-01", "ESXi-02", "10.10.30.20", "Ubuntu Server 22.04", 4, 8, 150, "VLAN30", "Base de datos", "CRITICAL"),
+        ("DB-LIMA-01", "ESXi-02", "10.10.30.30", "Ubuntu Server 22.04", 4, 8, 150, "VLAN30", "Base de datos MySQL", "CRITICAL"),
         ("DHCP-LIMA-01", "ESXi-02", "10.10.30.30", "Windows Server 2022", 2, 4, 60, "VLAN30", "DHCP", "HIGH"),
         ("GLPI-LIMA-01", "ESXi-02", "10.10.30.40", "Ubuntu Server 22.04", 4, 8, 100, "VLAN30", "Gestion de activos GLPI", "HIGH"),
         ("PBX-LIMA-01", "ESXi-02", "10.10.40.10", "Linux / FreePBX", 2, 4, 80, "VLAN40", "Telefonia IP", "HIGH"),
@@ -149,10 +155,13 @@ def _seed_vms_and_services(db, sites, hypervisors):
         })
 
     services = {}
+    legacy_db_service = db.query(ITService).filter(ITService.name == "Alesof Database").first()
+    if legacy_db_service and legacy_db_service.host == "10.10.30.20":
+        legacy_db_service.host, legacy_db_service.port = "10.10.30.30", 3306
     service_specs = [
         ("Alesof Web Platform", "WEB", "Trujillo", None, "alesof.pe", 443, "HTTPS", "PUBLIC", "CLOUD", "CRITICAL"),
         ("Alesof Backend API", "API", "Trujillo", None, "api.alesof.pe", 443, "HTTPS", "PUBLIC", "CLOUD", "CRITICAL"),
-        ("Alesof Database", "DATABASE", "Lima", "DB-LIMA-01", "10.10.30.20", 5432, "TCP", "INTERNAL", "VLAN30", "CRITICAL"),
+        ("Alesof Database", "DATABASE", "Lima", "DB-LIMA-01", "10.10.30.30", 3306, "TCP", "INTERNAL", "VLAN30", "CRITICAL"),
         ("APP-LIMA-01 Application Service", "APPLICATION", "Lima", "APP-LIMA-01", "10.10.30.50", 8000, "HTTP", "INTERNAL", "VLAN30", "CRITICAL"),
         ("FILE-LIMA-01 File Sharing", "FILE", "Lima", "FILE-LIMA-01", "10.10.30.60", 445, "TCP", "INTERNAL", "VLAN30", "HIGH"),
         ("HAProxy Reverse Proxy", "PROXY", "Lima", "HAProxy", "10.10.90.10", 443, "HTTPS", "DMZ", "VLAN90", "CRITICAL"),

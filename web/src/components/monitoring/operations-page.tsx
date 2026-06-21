@@ -8,22 +8,22 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-  Activity, AlertTriangle, CheckCircle2, Loader2, Network, Play, Power, RefreshCw,
+  Activity, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Loader2, Network, Play, Power, RefreshCw,
   Search, Server, ShieldAlert, Wifi,
 } from "lucide-react";
 
 export type OperationsKind = "hypervisors" | "vms" | "network" | "devices" | "services" | "alerts" | "agents" | "risk" | "sla" | "backups" | "security";
 
 const config = {
-  hypervisors: { title: "Hypervisor Monitor", description: "Estado de ESXi y vCenter, capacidad, datastores y VMs.", endpoint: "/api/hypervisors", icon: Server },
-  vms: { title: "VM Control Center", description: "Control autorizado de maquinas virtuales y servicios asociados.", endpoint: "/api/vms", icon: Power },
-  network: { title: "Network Health", description: "Salud de sedes, enlaces, DNS, puertos y servicios publicados.", endpoint: "/api/network/health", icon: Network },
-  devices: { title: "Device Monitor", description: "Routers, switches, access point y hosts fisicos permitidos.", endpoint: "/api/devices", icon: Wifi },
+  hypervisors: { title: "Hipervisores", description: "Estado de ESXi y vCenter, capacidad, datastores y VMs.", endpoint: "/api/hypervisors", icon: Server },
+  vms: { title: "Control de maquinas virtuales", description: "Control autorizado de maquinas virtuales y servicios asociados.", endpoint: "/api/vms", icon: Power },
+  network: { title: "Salud de red", description: "Salud de sedes, enlaces, DNS, puertos y servicios publicados.", endpoint: "/api/network/health", icon: Network },
+  devices: { title: "Dispositivos", description: "Routers, switches y puntos de acceso administrados.", endpoint: "/api/devices", icon: Wifi },
   services: { title: "Servicios TI", description: "Servicios CORE, internos, DMZ y AWS relacionados con VMs y SLA.", endpoint: "/api/services", icon: Activity },
-  alerts: { title: "Alert Center", description: "Reconocimiento, resolucion, asignacion y tickets desde alertas.", endpoint: "/api/alerts", icon: ShieldAlert },
-  agents: { title: "Hybrid Agent", description: "Estado y capacidades del recolector ALESOF-AGENT-LIMA.", endpoint: "/api/agents", icon: Activity },
-  risk: { title: "Risk Score", description: "Riesgo operativo de plataforma, DMZ, AWS y sedes.", endpoint: "/api/risk", icon: AlertTriangle },
-  sla: { title: "SLA Impact", description: "Contratos, disponibilidad comprometida, riesgo y penalidad estimada.", endpoint: "/api/sla", icon: CheckCircle2 },
+  alerts: { title: "Centro de alertas", description: "Reconocimiento, resolucion, asignacion y tickets desde alertas.", endpoint: "/api/alerts", icon: ShieldAlert },
+  agents: { title: "Agente hibrido", description: "Estado y capacidades del recolector ALESOF-AGENT-LIMA.", endpoint: "/api/agents", icon: Activity },
+  risk: { title: "Riesgo operativo", description: "Riesgo operativo de plataforma, DMZ, AWS y sedes.", endpoint: "/api/risk", icon: AlertTriangle },
+  sla: { title: "Impacto SLA", description: "Contratos, disponibilidad comprometida, riesgo y penalidad estimada.", endpoint: "/api/sla", icon: CheckCircle2 },
   backups: { title: "Backups y continuidad", description: "Jobs persistentes, RTO, RPO y pruebas de restauracion.", endpoint: "/api/backups", icon: RefreshCw },
   security: { title: "Seguridad y cumplimiento", description: "Controles, evidencia, riesgo y auditoria operativa.", endpoint: "/api/security/controls", icon: ShieldAlert },
 } satisfies Record<OperationsKind, { title: string; description: string; endpoint: string; icon: typeof Activity }>;
@@ -112,11 +112,18 @@ const statusTone: Record<string, string> = {
   "Con riesgo": "border-red-200 bg-red-50 text-red-700",
 };
 
+const healthyStates = new Set(["ONLINE", "poweredOn", "RESOLVED", "Bajo", "Vigente", "COMPLIANT", "SUCCESS"]);
+const attentionStates = new Set(["OFFLINE", "poweredOff", "ACTIVE", "ACKNOWLEDGED", "CRITICAL", "WARNING", "FAILED", "Critico", "Alto", "Con riesgo", "NON_COMPLIANT"]);
+const PAGE_SIZE = 8;
+
 export function OperationsPage({ kind }: { kind: OperationsKind }) {
   const cfg = config[kind];
   const Icon = cfg.icon;
   const [items, setItems] = useState<Record<string, unknown>[]>([]);
   const [query, setQuery] = useState("");
+  const [healthFilter, setHealthFilter] = useState<"all" | "healthy" | "attention">("all");
+  const [sortBy, setSortBy] = useState<"name" | "status">("name");
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
   const [pendingAction, setPendingAction] = useState<{ path: string; success: string; confirmation: string; mode: "default" | "connectivity" } | null>(null);
@@ -139,7 +146,19 @@ export function OperationsPage({ kind }: { kind: OperationsKind }) {
     return () => { active = false; };
   }, [cfg.endpoint, cfg.title, kind]);
 
-  const filtered = useMemo(() => items.filter((item) => JSON.stringify(item).toLowerCase().includes(query.toLowerCase())), [items, query]);
+  const filtered = useMemo(() => items
+    .filter((item) => JSON.stringify(item).toLowerCase().includes(query.toLowerCase()))
+    .filter((item) => {
+      const itemState = displayState(kind, item);
+      if (healthFilter === "healthy") return healthyStates.has(itemState);
+      if (healthFilter === "attention") return attentionStates.has(itemState);
+      return true;
+    })
+    .sort((a, b) => (sortBy === "status" ? displayState(kind, a).localeCompare(displayState(kind, b)) : label(a).localeCompare(label(b)))),
+  [healthFilter, items, kind, query, sortBy]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const visibleItems = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
   const online = items.filter((item) => ["ONLINE", "poweredOn", "RESOLVED", "Bajo", "Vigente"].includes(displayState(kind, item))).length;
   const critical = items.filter((item) => ["OFFLINE", "poweredOff", "ACTIVE", "CRITICAL", "Critico", "Con riesgo"].includes(displayState(kind, item))).length;
 
@@ -174,7 +193,7 @@ export function OperationsPage({ kind }: { kind: OperationsKind }) {
 
   return (
     <div className="space-y-5">
-      <section className="rounded-[1.5rem] border p-6 shadow-sm" style={{ background: "var(--app-surface)", borderColor: "var(--app-border)" }}>
+      <section className="border p-6 shadow-sm" style={{ background: "var(--app-surface)", borderColor: "var(--app-border)", borderRadius: 8 }}>
         <div className="grid gap-6 xl:grid-cols-[1fr_420px]">
           <div>
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl text-white" style={{ background: "var(--app-brand)" }}><Icon className="h-5 w-5" /></div>
@@ -189,10 +208,29 @@ export function OperationsPage({ kind }: { kind: OperationsKind }) {
         </div>
       </section>
 
-      <div className="relative"><Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: "var(--app-muted)" }} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar recurso, IP, VLAN, sede o estado" className="h-12 rounded-2xl pl-11" /></div>
+      <section className="flex flex-col gap-3 border p-3 lg:flex-row lg:items-center" style={{ background: "var(--app-surface)", borderColor: "var(--app-border)", borderRadius: 8 }}>
+        <div className="relative min-w-0 flex-1">
+          <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: "var(--app-muted)" }} />
+          <Input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Buscar recurso, IP, VLAN, sede o estado" className="h-10 rounded-lg pl-11" />
+        </div>
+        <div className="grid grid-cols-3 gap-1 rounded-lg p-1" style={{ background: "var(--app-surface-soft)" }}>
+          {(["all", "healthy", "attention"] as const).map((value) => (
+            <button key={value} type="button" onClick={() => { setHealthFilter(value); setPage(1); }}
+              className="h-8 rounded-md px-3 text-[11px] font-black"
+              style={{ background: healthFilter === value ? "var(--app-surface)" : "transparent", color: healthFilter === value ? "var(--app-text)" : "var(--app-muted)", boxShadow: healthFilter === value ? "0 1px 3px rgba(15,23,42,.12)" : "none" }}>
+              {{ all: "Todos", healthy: "Saludables", attention: "Atencion" }[value]}
+            </button>
+          ))}
+        </div>
+        <select aria-label="Ordenar recursos" value={sortBy} onChange={(event) => { setSortBy(event.target.value as "name" | "status"); setPage(1); }}
+          className="h-10 rounded-lg border px-3 text-xs font-bold outline-none" style={{ background: "var(--app-surface)", borderColor: "var(--app-border)", color: "var(--app-text)" }}>
+          <option value="name">Ordenar por nombre</option>
+          <option value="status">Ordenar por estado</option>
+        </select>
+      </section>
 
       <section className="grid gap-4 xl:grid-cols-2">
-        {filtered.map((item, index) => {
+        {visibleItems.map((item, index) => {
           const itemState = displayState(kind, item);
           const id = Number(item.id ?? index);
           return (
@@ -222,6 +260,27 @@ export function OperationsPage({ kind }: { kind: OperationsKind }) {
           );
         })}
       </section>
+
+      {filtered.length === 0 && (
+        <div className="flex min-h-48 flex-col items-center justify-center border border-dashed p-6 text-center" style={{ borderColor: "var(--app-border)", borderRadius: 8 }}>
+          <Search className="h-6 w-6" style={{ color: "var(--app-muted)" }} />
+          <p className="mt-3 text-sm font-black" style={{ color: "var(--app-text)" }}>No se encontraron recursos</p>
+          <p className="mt-1 text-xs" style={{ color: "var(--app-muted)" }}>Cambia la busqueda o el filtro de estado.</p>
+        </div>
+      )}
+
+      {filtered.length > PAGE_SIZE && (
+        <div className="flex items-center justify-between border px-3 py-2" style={{ background: "var(--app-surface)", borderColor: "var(--app-border)", borderRadius: 8 }}>
+          <p className="text-xs font-bold" style={{ color: "var(--app-muted)" }}>{(currentPage - 1) * PAGE_SIZE + 1}-{Math.min(currentPage * PAGE_SIZE, filtered.length)} de {filtered.length}</p>
+          <div className="flex items-center gap-2">
+            <button type="button" title="Pagina anterior" disabled={currentPage === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border disabled:opacity-35" style={{ borderColor: "var(--app-border)", color: "var(--app-text)" }}><ChevronLeft className="h-4 w-4" /></button>
+            <span className="min-w-16 text-center text-xs font-black" style={{ color: "var(--app-text)" }}>{currentPage} / {totalPages}</span>
+            <button type="button" title="Pagina siguiente" disabled={currentPage === totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border disabled:opacity-35" style={{ borderColor: "var(--app-border)", color: "var(--app-text)" }}><ChevronRight className="h-4 w-4" /></button>
+          </div>
+        </div>
+      )}
 
       <Dialog open={Boolean(pendingAction)} onOpenChange={(open) => !open && !acting && setPendingAction(null)}>
         <DialogContent className="max-w-md border p-0" style={{ background: "var(--app-surface)", borderColor: "var(--app-border)", borderRadius: 8 }}>

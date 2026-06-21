@@ -81,7 +81,7 @@ def sedes(
         })
     return _module(
         "Sedes empresariales",
-        "Control operativo por ubicacion: Lima, Arequipa, Trujillo y AWS.",
+        "Control operativo por sede: Lima virtualizada, Arequipa fisica y Trujillo en AWS.",
         [
             {"label": "Sedes", "value": len(records), "tone": "brand"},
             {"label": "Operativas", "value": sum(1 for item in records if item["status"] == "Operativo"), "tone": "success"},
@@ -103,7 +103,7 @@ def servicios(
     services = [
         ("Active Directory", "Identidad corporativa, DNS interno y autenticacion.", "Infraestructura", "Operativo", "Alta", "99.5%", "AD-LIMA-01"),
         ("DNS + DHCP", "Resolucion de nombres y entrega de IP por VLAN.", "Redes", "Operativo", "Alta", "99.5%", "VLANs 10/20/30/40"),
-        ("ERP Odoo", "Gestion empresarial sobre Docker y PostgreSQL.", "Aplicaciones", "Operativo", "Media", "99.0%", "10.10.30.70:8069"),
+        ("APP-LIMA-01", "Servidor de aplicaciones y servicios empresariales internos.", "Aplicaciones", "Operativo", "Alta", "99.0%", "10.10.30.50:8000"),
         ("Zabbix", "Monitoreo centralizado de sedes, VMs y red.", "NOC", "Degradado" if critical else "Operativo", "Alta", "99.5%", f"{open_tickets} eventos activos"),
         ("Veeam Backup", "Backups full e incrementales hacia TrueNAS.", "Continuidad", "Operativo", "Alta", "RPO 24h", "Ultimo job OK"),
         ("Zimbra Mail", "Correo corporativo y comunicacion interna.", "Comunicaciones", "Operativo", "Media", "99.0%", "mail.alesof.pe"),

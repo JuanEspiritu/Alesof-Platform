@@ -1,5 +1,5 @@
-import { EnterpriseModulePage } from "@/components/enterprise/module-page";
+import { OperationsPage } from "@/components/monitoring/operations-page";
 
 export default function ContratosPage() {
-  return <EnterpriseModulePage endpoint="/api/empresa/contratos" />;
+  return <OperationsPage kind="sla" />;
 }

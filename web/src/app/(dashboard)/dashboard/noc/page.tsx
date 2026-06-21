@@ -2,7 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { toast } from "sonner";
 import api from "@/lib/api";
+import { getUser } from "@/lib/auth";
+import { getPreferences } from "@/lib/preferences";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -23,7 +26,7 @@ import {
 } from "lucide-react";
 
 type Severity = "success" | "info" | "warning" | "critical";
-type SiteStatus = "online" | "degraded" | "critical";
+type SiteStatus = "online" | "degraded" | "critical" | "unknown";
 
 interface NocEvent {
   id: string;
@@ -43,6 +46,7 @@ interface NocSite {
   devices_online: number;
   availability: number;
   status: SiteStatus;
+  source: string;
 }
 
 interface NocService {
@@ -51,14 +55,16 @@ interface NocService {
   target: string;
   status: SiteStatus;
   metric: string;
+  source: string;
 }
 
 interface VpnLink {
   name: string;
   type: string;
-  latency_ms: number;
-  packet_loss: number;
+  latency_ms: number | null;
+  packet_loss: number | null;
   status: SiteStatus;
+  source: string;
 }
 
 interface EnterpriseModule {
@@ -132,23 +138,26 @@ function requestBrowserNotification(event: NocEvent) {
 }
 
 export default function NocPage() {
+  const preferences = getPreferences();
+  const user = getUser();
   const [data, setData] = useState<NocData | null>(null);
   const [loading, setLoading] = useState(true);
   const [alarmEnabled, setAlarmEnabled] = useState(false);
   const [incomingEvent, setIncomingEvent] = useState<NocEvent | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [liveMode, setLiveMode] = useState<"connecting" | "websocket" | "polling">("connecting");
   const lastSignature = useRef<string | null>(null);
 
   async function loadNoc() {
     try {
-      const { data: nextData } = await api.get<NocData>("/api/reportes/noc-live");
+      const { data: nextData } = await api.get<NocData>("/api/noc/status");
       setData(nextData);
       setLastRefresh(new Date());
       const criticalEvent = nextData.events.find((event) => event.severity === "critical");
       const changed = lastSignature.current && lastSignature.current !== nextData.alert_signature;
       if (alarmEnabled && criticalEvent && (changed || !incomingEvent)) {
         playNocAlarm();
-        navigator.vibrate?.([350, 120, 350, 120, 700]);
+        if (preferences.vibrationEnabled) navigator.vibrate?.([350, 120, 350, 120, 700]);
         requestBrowserNotification(criticalEvent);
         setIncomingEvent(criticalEvent);
       }
@@ -160,8 +169,66 @@ export default function NocPage() {
 
   useEffect(() => {
     void loadNoc();
-    const timer = window.setInterval(() => void loadNoc(), 7000);
+    const timer = window.setInterval(() => void loadNoc(), preferences.nocRefreshSeconds * 1000);
     return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alarmEnabled]);
+
+  useEffect(() => {
+    let socket: WebSocket | null = null;
+    let stopped = false;
+    let reconnectTimer: number | null = null;
+    const connect = async () => {
+      try {
+        const { data: ticketData } = await api.post<{ ticket: string }>("/api/noc/ws-ticket");
+        if (stopped) return;
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+        const wsUrl = `${apiUrl.replace(/^http/, "ws")}/ws/noc?ticket=${encodeURIComponent(ticketData.ticket)}`;
+        socket = new WebSocket(wsUrl);
+        socket.onopen = () => setLiveMode("websocket");
+        socket.onmessage = (message) => {
+      const event = JSON.parse(message.data) as {
+        type: string; severity?: string; title?: string; affected_resource?: string; source?: string;
+      };
+      if (event.type === "connected") return;
+      const critical = ["CRITICAL", "HIGH"].includes(event.severity ?? "");
+      const incoming: NocEvent = {
+          id: `${event.type}-${Date.now()}`,
+          severity: event.severity === "CRITICAL" ? "critical" : critical ? "warning" : "info",
+          title: event.title ?? "Evento NOC",
+          message: `${event.affected_resource ?? "Recurso"} requiere atencion operativa.`,
+          source: event.source ?? "NOC",
+          href: "/dashboard/alertas",
+      };
+      setData((current) => current ? {
+        ...current,
+        status: incoming.severity === "critical" ? "critical" : incoming.severity === "warning" && current.status !== "critical" ? "warning" : current.status,
+        events: [incoming, ...current.events.filter((item) => item.id !== incoming.id)].slice(0, 8),
+      } : current);
+      if (critical) {
+        if (alarmEnabled && preferences.soundEnabled) playNocAlarm();
+        if (preferences.vibrationEnabled) navigator.vibrate?.([350, 120, 350, 120, 700]);
+        requestBrowserNotification(incoming);
+        setIncomingEvent(incoming);
+      }
+      void loadNoc();
+        };
+        socket.onerror = () => setLiveMode("polling");
+        socket.onclose = () => {
+          setLiveMode("polling");
+          if (!stopped) reconnectTimer = window.setTimeout(() => void connect(), 5000);
+        };
+      } catch {
+        setLiveMode("polling");
+        if (!stopped) reconnectTimer = window.setTimeout(() => void connect(), 5000);
+      }
+    };
+    void connect();
+    return () => {
+      stopped = true;
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      socket?.close();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [alarmEnabled]);
 
@@ -179,15 +246,25 @@ export default function NocPage() {
     const event: NocEvent = {
       id: "demo-critical",
       severity: "critical",
-      title: "Simulacion: VPN Lima - AWS degradada",
+      title: "Simulacion: VPN Lima - Trujillo degradada",
       message: "El canal de contingencia detecto perdida alta. Escalar al tecnico NOC de guardia.",
       source: "Demo NOC",
       href: "/dashboard/noc",
     };
     if (alarmEnabled) playNocAlarm();
-    navigator.vibrate?.([300, 100, 300, 100, 500]);
+    if (preferences.vibrationEnabled) navigator.vibrate?.([300, 100, 300, 100, 500]);
     requestBrowserNotification(event);
     setIncomingEvent(event);
+  }
+
+  async function runScenario(scenario: string) {
+    try {
+      await api.post(`/api/simulation/${scenario}`);
+      toast.success(scenario === "reset" ? "Simulacion restablecida" : "Escenario NOC activado");
+      await loadNoc();
+    } catch {
+      toast.error("No se pudo ejecutar el escenario");
+    }
   }
 
   if (loading && !data) {
@@ -211,13 +288,13 @@ export default function NocPage() {
           <div>
             <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-black ${severityStyle[data?.status ?? "info"]}`}>
               {data?.status === "critical" ? <Siren className="h-3.5 w-3.5" /> : <Activity className="h-3.5 w-3.5" />}
-              NOC Live · tiempo real
+              NOC Live · {liveMode === "websocket" ? "WebSocket" : liveMode === "polling" ? "polling" : "conectando"}
             </div>
             <h1 className="mt-5 text-4xl font-black tracking-tight md:text-5xl" style={{ color: "var(--app-text)" }}>
               {status.title}
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6" style={{ color: "var(--app-muted)" }}>
-              {status.detail} La consola se actualiza cada 7 segundos con datos de tickets, inventario, facturacion y servicios empresariales.
+              {status.detail} Los eventos llegan por WebSocket y la consola reconcilia el estado con la API en el intervalo configurado.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <button
@@ -264,7 +341,7 @@ export default function NocPage() {
           <div className="mb-5 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-black" style={{ color: "var(--app-text)" }}>Sedes y enlaces</h2>
-              <p className="text-xs" style={{ color: "var(--app-muted)" }}>Lima, Arequipa, Trujillo y AWS segun arquitectura empresarial.</p>
+              <p className="text-xs" style={{ color: "var(--app-muted)" }}>Lima virtualizada, Arequipa fisica y Trujillo desplegada en AWS.</p>
             </div>
             <Badge className="rounded-full bg-teal-50 text-teal-700 hover:bg-teal-50">
               {lastRefresh ? lastRefresh.toLocaleTimeString() : "Live"}
@@ -276,14 +353,17 @@ export default function NocPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-black" style={{ color: "var(--app-text)" }}>{site.name}</p>
-                    <p className="mt-1 text-xs font-semibold" style={{ color: "var(--app-muted)" }}>{site.role}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <p className="text-xs font-semibold" style={{ color: "var(--app-muted)" }}>{site.role}</p>
+                      <SourceBadge source={site.source} />
+                    </div>
                   </div>
                   <StatusBadge status={site.status} />
                 </div>
                 <div className="mt-5 grid grid-cols-3 gap-2 text-xs">
                   <MiniMetric label="CIDR" value={site.cidr} />
-                  <MiniMetric label="Latencia" value={`${site.latency_ms} ms`} />
-                  <MiniMetric label="Activos" value={`${site.devices_online}/${site.devices_total || "demo"}`} />
+                  <MiniMetric label="Latencia" value={site.latency_ms == null ? "Sin datos" : `${site.latency_ms} ms`} />
+                  <MiniMetric label="Activos" value={`${site.devices_online}/${site.devices_total}`} />
                 </div>
                 <div className="mt-4 h-2 overflow-hidden rounded-full" style={{ background: "var(--app-surface)" }}>
                   <div className="h-full rounded-full" style={{ width: `${site.availability}%`, background: site.status === "critical" ? "#ef4444" : site.status === "degraded" ? "#f59e0b" : "var(--app-accent)" }} />
@@ -307,7 +387,10 @@ export default function NocPage() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-black" style={{ color: "var(--app-text)" }}>{link.name}</p>
-                    <p className="text-xs" style={{ color: "var(--app-muted)" }}>{link.type} · {link.latency_ms} ms · loss {link.packet_loss}%</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <p className="text-xs" style={{ color: "var(--app-muted)" }}>{link.type} · {link.latency_ms == null ? "sin latencia" : `${link.latency_ms} ms`} · loss {link.packet_loss == null ? "sin datos" : `${link.packet_loss}%`}</p>
+                      <SourceBadge source={link.source} />
+                    </div>
                   </div>
                   <StatusBadge status={link.status} />
                 </div>
@@ -332,7 +415,10 @@ export default function NocPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-black" style={{ color: "var(--app-text)" }}>{service.name}</p>
-                    <p className="mt-1 text-xs" style={{ color: "var(--app-muted)" }}>{service.owner} · Objetivo {service.target}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <p className="text-xs" style={{ color: "var(--app-muted)" }}>{service.owner} · Objetivo {service.target}</p>
+                      <SourceBadge source={service.source} />
+                    </div>
                   </div>
                   <StatusBadge status={service.status} />
                 </div>
@@ -379,6 +465,32 @@ export default function NocPage() {
           </div>
         ))}
       </section>
+
+      {user?.permissions?.includes("can_manage_services") && (
+        <section className="rounded-[1.5rem] border p-5 shadow-sm" style={{ background: "var(--app-surface)", borderColor: "var(--app-border)" }}>
+          <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+            <div>
+              <h2 className="text-sm font-black" style={{ color: "var(--app-text)" }}>Escenarios de demostracion</h2>
+              <p className="mt-1 text-xs" style={{ color: "var(--app-muted)" }}>Generan evento, alerta, WebSocket y ticket automatico cuando corresponde.</p>
+            </div>
+            <button type="button" onClick={() => runScenario("reset")} className="h-10 rounded-xl border px-4 text-xs font-black" style={{ borderColor: "var(--app-border)", color: "var(--app-text)" }}>Restablecer todo</button>
+          </div>
+          <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              ["haproxy-down", "HAProxy caido"], ["web-down", "Web DMZ caida"],
+              ["vpn-down", "VPN Lima-Trujillo"], ["vm-down", "VM critica apagada"],
+              ["backup-failed", "Backup fallido"], ["high-cpu", "CPU ESXi alta"],
+              ["switch-down", "Switch core caido"], ["agent-offline", "Agente offline"],
+            ].map(([scenario, label]) => (
+              <button key={scenario} type="button" onClick={() => runScenario(scenario)}
+                className="h-11 rounded-xl border px-3 text-left text-xs font-black hover:-translate-y-0.5"
+                style={{ background: "var(--app-surface-soft)", borderColor: "var(--app-border)", color: "var(--app-text)" }}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {incomingEvent && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-sm">
@@ -445,9 +557,20 @@ function StatusBadge({ status }: { status: SiteStatus }) {
     online: "border-emerald-200 bg-emerald-50 text-emerald-700",
     degraded: "border-amber-200 bg-amber-50 text-amber-700",
     critical: "border-red-200 bg-red-50 text-red-700",
+    unknown: "border-slate-200 bg-slate-100 text-slate-600",
   };
-  const label = { online: "Online", degraded: "Degradado", critical: "Critico" }[status];
+  const label = { online: "Online", degraded: "Degradado", critical: "Critico", unknown: "Sin datos" }[status];
   return <span className={`rounded-full border px-2.5 py-1 text-[11px] font-black ${map[status]}`}>{label}</span>;
+}
+
+function SourceBadge({ source }: { source: string }) {
+  const normalized = source.toUpperCase();
+  const isReal = ["AGENT", "VMWARE", "AWS", "VEEAM"].includes(normalized);
+  return (
+    <span className={`rounded-full border px-2 py-0.5 text-[9px] font-black uppercase ${isReal ? "border-teal-200 bg-teal-50 text-teal-700" : "border-slate-200 bg-slate-100 text-slate-600"}`}>
+      {normalized === "AGENT" ? "Agente" : normalized === "SIMULATED" ? "Simulado" : normalized}
+    </span>
+  );
 }
 
 function MiniMetric({ label, value }: { label: string; value: string | number }) {

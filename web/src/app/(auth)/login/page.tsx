@@ -46,7 +46,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const { data } = await api.post("/api/auth/login", { email, password });
-      setAuth(data.access_token, data.refresh_token, data.user);
+      setAuth(data.access_token, data.refresh_token, data.user, data.permissions ?? []);
       toast.success(`Sesion iniciada: ${data.user.nombre.split(" ")[0]}`);
       router.push(roleHome[data.user.rol as User["rol"]] ?? "/dashboard/soporte");
     } catch (err: unknown) {

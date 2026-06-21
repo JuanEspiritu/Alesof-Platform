@@ -10,6 +10,7 @@ from core.auth import (
 )
 from core.config import settings
 from core.database import get_db
+from core.permissions import permissions_for_role
 from models.usuario import Usuario
 from schemas.auth import LoginRequest, RefreshRequest, TokenResponse, UserInfo
 
@@ -37,6 +38,7 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
         access_token=access_token,
         refresh_token=refresh_token,
         user=UserInfo.model_validate(user),
+        permissions=permissions_for_role(user.rol),
     )
 
 
@@ -62,6 +64,7 @@ def refresh(data: RefreshRequest, db: Session = Depends(get_db)):
         access_token=access_token,
         refresh_token=refresh_token,
         user=UserInfo.model_validate(user),
+        permissions=permissions_for_role(user.rol),
     )
 
 

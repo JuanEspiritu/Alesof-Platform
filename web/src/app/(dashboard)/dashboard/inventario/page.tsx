@@ -25,7 +25,7 @@ interface Equipo {
   serie: string; sede: string; vlan: string | null; ip: string | null; estado: string;
 }
 
-const tipos      = ["router", "switch", "OLT", "servidor", "access_point"];
+const tipos      = ["router", "switch", "servidor", "access_point", "aws_resource"];
 const sedesOpts  = ["Lima", "Arequipa", "AWS"];
 const estadosOpts = ["activo", "mantenimiento", "dañado", "retirado"];
 
@@ -40,7 +40,7 @@ const estadoBadge: Record<string, { label: string; bg: string; color: string; do
   retirado:      { label: "Retirado",      bg: "rgba(100,116,139,0.1)", color: "#475569", dot: "#94a3b8" },
 };
 const tipoColor: Record<string, string> = {
-  router: "#1e3a5f", switch: "#0891b2", OLT: "#7c3aed", servidor: "#059669", access_point: "#f97316",
+  router: "#1e3a5f", switch: "#0891b2", servidor: "#059669", access_point: "#f97316", aws_resource: "#7c3aed",
 };
 
 export default function InventarioPage() {

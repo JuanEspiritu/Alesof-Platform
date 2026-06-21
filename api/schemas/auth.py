@@ -11,6 +11,7 @@ class TokenResponse(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     user: "UserInfo"
+    permissions: list[str] = []
 
 
 class UserInfo(BaseModel):

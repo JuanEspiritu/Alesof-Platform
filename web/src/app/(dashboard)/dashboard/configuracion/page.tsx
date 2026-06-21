@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { ComponentType, CSSProperties } from "react";
 import { toast } from "sonner";
+import api from "@/lib/api";
 import { getUser } from "@/lib/auth";
 import {
   applyPreferences,
@@ -22,15 +23,34 @@ import {
   Palette,
   ShieldCheck,
   UserRound,
+  Vibrate,
+  Volume2,
 } from "lucide-react";
+
+type IntegrationStatus = Record<string, { configured: boolean }>;
 
 export default function ConfiguracionPage() {
   const [preferences, setPreferences] = useState<AppPreferences>(() => getPreferences());
+  const [integrations, setIntegrations] = useState<IntegrationStatus>({});
   const user = getUser();
 
   useEffect(() => {
     applyPreferences(preferences);
   }, [preferences]);
+
+  useEffect(() => {
+    api.get<IntegrationStatus>("/api/integrations/status").then(({ data }) => setIntegrations(data)).catch(() => setIntegrations({}));
+  }, []);
+
+  async function syncIntegration(name: "aws" | "veeam") {
+    try {
+      await api.post(`/api/integrations/${name}/sync`);
+      toast.success(`${name.toUpperCase()} sincronizado`);
+    } catch (error: unknown) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(typeof detail === "string" ? detail : "Integracion no disponible");
+    }
+  }
 
   function updatePreferences(next: Partial<AppPreferences>) {
     const updated = { ...preferences, ...next };
@@ -72,14 +92,14 @@ export default function ConfiguracionPage() {
 
       <section className="grid gap-4 xl:grid-cols-[1fr_360px]">
         <div className="space-y-4">
-          <div className="rounded-[1.5rem] border bg-white p-5 shadow-sm" style={{ borderColor: "var(--app-border)" }}>
+          <div className="rounded-[1.5rem] border p-5 shadow-sm" style={{ borderColor: "var(--app-border)", background: "var(--app-surface)" }}>
             <div className="mb-5 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl text-white" style={{ background: "var(--app-brand)" }}>
                 <Palette className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-sm font-black text-slate-950">Tema visual</h2>
-                <p className="text-xs text-slate-500">Elige entre Light, Dark y Classic.</p>
+                <h2 className="text-sm font-black" style={{ color: "var(--app-text)" }}>Tema visual</h2>
+                <p className="text-xs" style={{ color: "var(--app-muted)" }}>Elige entre Light, Dark y Classic.</p>
               </div>
             </div>
 
@@ -112,15 +132,15 @@ export default function ConfiguracionPage() {
                       </div>
                       {active && <CheckCircle2 className="h-5 w-5 text-emerald-500" />}
                     </div>
-                    <p className="text-sm font-black text-slate-950">{theme.name}</p>
-                    <p className="mt-1 text-xs leading-5 text-slate-500">{theme.description}</p>
+                    <p className="text-sm font-black" style={{ color: "var(--app-text)" }}>{theme.name}</p>
+                    <p className="mt-1 text-xs leading-5" style={{ color: "var(--app-muted)" }}>{theme.description}</p>
                   </button>
                 );
               })}
             </div>
           </div>
 
-          <div className="rounded-[1.5rem] border bg-white p-5 shadow-sm" style={{ borderColor: "var(--app-border)" }}>
+          <div className="rounded-[1.5rem] border p-5 shadow-sm" style={{ borderColor: "var(--app-border)", background: "var(--app-surface)" }}>
             <div className="mb-5 flex items-center gap-3">
               <div
                 className="flex h-10 w-10 items-center justify-center rounded-2xl"
@@ -129,8 +149,8 @@ export default function ConfiguracionPage() {
                 <LayoutPanelLeft className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-sm font-black text-slate-950">Módulos y lectura</h2>
-                <p className="text-xs text-slate-500">Controla la navegación y densidad visual del panel.</p>
+                <h2 className="text-sm font-black" style={{ color: "var(--app-text)" }}>Módulos y lectura</h2>
+                <p className="text-xs" style={{ color: "var(--app-muted)" }}>Controla la navegación y densidad visual del panel.</p>
               </div>
             </div>
 
@@ -156,17 +176,44 @@ export default function ConfiguracionPage() {
                 active={preferences.notificationsEnabled}
                 onClick={() => updatePreferences({ notificationsEnabled: !preferences.notificationsEnabled })}
               />
+              <PreferenceCard
+                icon={Volume2}
+                title="Sonido NOC"
+                text="Reproduce alarma cuando llega una alerta critica."
+                active={preferences.soundEnabled}
+                onClick={() => updatePreferences({ soundEnabled: !preferences.soundEnabled })}
+              />
+              <PreferenceCard
+                icon={Vibrate}
+                title="Vibracion"
+                text="Vibra en celulares compatibles ante eventos prioritarios."
+                active={preferences.vibrationEnabled}
+                onClick={() => updatePreferences({ vibrationEnabled: !preferences.vibrationEnabled })}
+              />
+              <div className="rounded-2xl border p-4" style={{ background: "var(--app-surface)", borderColor: "var(--app-border)" }}>
+                <p className="text-sm font-black" style={{ color: "var(--app-text)" }}>Actualizacion NOC</p>
+                <p className="mt-2 text-xs leading-5" style={{ color: "var(--app-muted)" }}>Intervalo de respaldo cuando WebSocket no esta disponible.</p>
+                <div className="mt-4 flex gap-2">
+                  {[5, 7, 10, 15].map((seconds) => (
+                    <button key={seconds} type="button" onClick={() => updatePreferences({ nocRefreshSeconds: seconds })}
+                      className="h-8 flex-1 rounded-lg text-xs font-black"
+                      style={{ background: preferences.nocRefreshSeconds === seconds ? "var(--app-brand)" : "var(--app-surface-soft)", color: preferences.nocRefreshSeconds === seconds ? "#fff" : "var(--app-text)" }}>
+                      {seconds}s
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
         <aside className="space-y-4">
-          <div className="rounded-[1.5rem] border bg-white p-5 shadow-sm" style={{ borderColor: "var(--app-border)" }}>
+          <div className="rounded-[1.5rem] border p-5 shadow-sm" style={{ borderColor: "var(--app-border)", background: "var(--app-surface)" }}>
             <div className="mb-6 flex items-center gap-3">
               <AvatarBlock name={user?.nombre ?? "Usuario"} />
               <div className="min-w-0">
-                <p className="truncate text-sm font-black text-slate-950">{user?.nombre ?? "Usuario"}</p>
-                <p className="text-xs font-semibold text-slate-500">{user?.email ?? "Sin correo"}</p>
+                <p className="truncate text-sm font-black" style={{ color: "var(--app-text)" }}>{user?.nombre ?? "Usuario"}</p>
+                <p className="text-xs font-semibold" style={{ color: "var(--app-muted)" }}>{user?.email ?? "Sin correo"}</p>
               </div>
             </div>
             <div className="space-y-3">
@@ -176,15 +223,39 @@ export default function ConfiguracionPage() {
             </div>
           </div>
 
-          <div className="rounded-[1.5rem] border bg-white p-5 shadow-sm" style={{ borderColor: "var(--app-border)" }}>
+          <div className="rounded-[1.5rem] border p-5 shadow-sm" style={{ borderColor: "var(--app-border)", background: "var(--app-surface)" }}>
             <div className="mb-5 flex items-center gap-3">
               <ShieldCheck className="h-5 w-5 text-emerald-600" />
-              <h2 className="text-sm font-black text-slate-950">Información operativa</h2>
+              <h2 className="text-sm font-black" style={{ color: "var(--app-text)" }}>Información operativa</h2>
             </div>
-            <div className="space-y-3 text-sm leading-6 text-slate-600">
+            <div className="space-y-3 text-sm leading-6" style={{ color: "var(--app-muted)" }}>
               <p>Los indicadores provienen de la API local: tickets, facturación, inventario y clientes.</p>
               <p>Las notificaciones se calculan por rol, para evitar mostrar módulos no autorizados.</p>
               <p>Los temas se guardan en este navegador y no modifican la base de datos.</p>
+            </div>
+          </div>
+
+          <div className="rounded-[1.5rem] border p-5 shadow-sm" style={{ borderColor: "var(--app-border)", background: "var(--app-surface)" }}>
+            <div className="mb-5 flex items-center gap-3">
+              <ShieldCheck className="h-5 w-5" style={{ color: "var(--app-accent)" }} />
+              <div>
+                <h2 className="text-sm font-black" style={{ color: "var(--app-text)" }}>Integraciones reales</h2>
+                <p className="text-xs" style={{ color: "var(--app-muted)" }}>Estado leído desde el backend.</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {Object.entries(integrations).map(([name, state]) => (
+                <div key={name} className="flex items-center justify-between rounded-xl px-3 py-2.5" style={{ background: "var(--app-surface-soft)" }}>
+                  <span className="text-xs font-black uppercase" style={{ color: "var(--app-text)" }}>{name.replaceAll("_", " ")}</span>
+                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${state.configured ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-300 bg-slate-100 text-slate-600"}`}>
+                    {state.configured ? "Configurado" : "Pendiente"}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => syncIntegration("aws")} className="h-9 rounded-xl text-xs font-black text-white" style={{ background: "var(--app-brand)" }}>Sincronizar AWS</button>
+              <button type="button" onClick={() => syncIntegration("veeam")} className="h-9 rounded-xl text-xs font-black text-white" style={{ background: "var(--app-accent)" }}>Sincronizar Veeam</button>
             </div>
           </div>
         </aside>

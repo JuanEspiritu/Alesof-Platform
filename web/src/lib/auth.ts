@@ -5,6 +5,7 @@ export interface User {
   nombre: string;
   email: string;
   rol: "administrador" | "supervisor" | "tecnico" | "cliente";
+  permissions?: string[];
 }
 
 export function getUser(): User | null {
@@ -18,10 +19,15 @@ export function getUser(): User | null {
   }
 }
 
-export function setAuth(accessToken: string, refreshToken: string, user: User) {
+export function setAuth(accessToken: string, refreshToken: string, user: User, permissions: string[] = []) {
   localStorage.setItem("access_token", accessToken);
   localStorage.setItem("refresh_token", refreshToken);
-  localStorage.setItem("user", JSON.stringify(user));
+  localStorage.setItem("user", JSON.stringify({ ...user, permissions }));
+}
+
+export function hasPermission(permission: string): boolean {
+  const user = getUser();
+  return Boolean(user?.permissions?.includes(permission));
 }
 
 export function clearAuth() {

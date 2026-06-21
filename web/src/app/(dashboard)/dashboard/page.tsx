@@ -65,6 +65,10 @@ interface TicketEstado { estado: string; cantidad: number; }
 interface ClienteMes { anio: number; mes: number; total: number; label?: string; }
 interface Sede { sede: string; total_equipos: number; activos: number; disponibilidad: number; }
 interface Ticket { id: number; titulo: string; prioridad: string; estado: string; cliente: string | null; tecnico: string | null; }
+interface ExecutiveSummary {
+  availability: number; services_down: number; vms_off: number; sites_with_alerts: number;
+  dmz_services_at_risk: number; sla_at_risk: number; risk: { score: number; level: string };
+}
 
 export default function DashboardPage() {
   const [user] = useState<User | null>(() => getUser());
@@ -73,6 +77,7 @@ export default function DashboardPage() {
   const [clientesMes, setClientesMes] = useState<ClienteMes[]>([]);
   const [sedes, setSedes] = useState<Sede[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [executive, setExecutive] = useState<ExecutiveSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -82,13 +87,15 @@ export default function DashboardPage() {
       api.get("/api/reportes/clientes-por-mes"),
       api.get("/api/reportes/disponibilidad-sedes"),
       api.get("/api/reportes/ultimos-tickets"),
+      api.get("/api/dashboard/summary"),
     ])
-      .then(([d, e, c, s, t]) => {
+      .then(([d, e, c, s, t, summary]) => {
         setData(d.data);
         setTicketsEst(e.data);
         setClientesMes(c.data.map((x: ClienteMes) => ({ ...x, label: `${meses[x.mes - 1]}` })));
         setSedes(s.data);
         setTickets(t.data);
+        setExecutive(summary.data);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -137,7 +144,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="rounded-2xl border p-4 text-right" style={{ background: "var(--app-surface-soft)", borderColor: "var(--app-border)" }}>
                   <p className="text-xs font-semibold" style={{ color: "var(--app-muted)" }}>Disponibilidad promedio</p>
-                  <p className="mt-1 text-4xl font-black" style={{ color: "var(--app-accent)" }}>{avgAvailability}%</p>
+                  <p className="mt-1 text-4xl font-black" style={{ color: "var(--app-accent)" }}>{executive?.availability ?? avgAvailability}%</p>
                 </div>
               </div>
 
@@ -145,8 +152,8 @@ export default function DashboardPage() {
                 {[
                   { label: "Clientes activos", value: data?.total_clientes ?? 0, icon: Users, tone: "brand" },
                   { label: "Tickets abiertos", value: data?.tickets_abiertos ?? 0, icon: Headset, tone: "accent" },
-                  { label: "Criticos", value: criticalTickets, icon: AlertTriangle, tone: "warning" },
-                  { label: "Cobrado mes", value: `S/ ${(data?.ingresos_mes ?? 0).toLocaleString()}`, icon: Receipt, tone: "soft" },
+                  { label: "Servicios caidos", value: executive?.services_down ?? 0, icon: AlertTriangle, tone: "warning" },
+                  { label: "Riesgo global", value: `${executive?.risk.score ?? 0}%`, icon: ShieldCheck, tone: "soft" },
                 ].map((item) => (
                   <div
                     key={item.label}

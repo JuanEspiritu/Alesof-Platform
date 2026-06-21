@@ -245,7 +245,7 @@ def noc_live(
     services = [
         {"name": "Active Directory", "owner": "Infraestructura", "target": "99.5%", "status": "online", "metric": "LDAP/DNS operativo"},
         {"name": "DNS + DHCP", "owner": "Redes", "target": "99.5%", "status": "online", "metric": "Scopes activos"},
-        {"name": "ERP Odoo", "owner": "Aplicaciones", "target": "99.0%", "status": "online", "metric": "Docker saludable"},
+        {"name": "APP-LIMA-01", "owner": "Aplicaciones", "target": "99.0%", "status": "online", "metric": "Servicio interno saludable"},
         {"name": "Zabbix Server", "owner": "NOC", "target": "99.5%", "status": "warning" if tickets_criticos else "online", "metric": f"{tickets_abiertos} eventos abiertos"},
         {"name": "Veeam Backup", "owner": "Continuidad", "target": "RPO 24h", "status": "online", "metric": "Ultimo job OK"},
         {"name": "Correo Zimbra", "owner": "Comunicaciones", "target": "99.0%", "status": "online", "metric": "SMTP/IMAP OK"},

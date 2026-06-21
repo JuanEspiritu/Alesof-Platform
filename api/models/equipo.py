@@ -11,7 +11,7 @@ class Equipo(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     nombre: Mapped[str] = mapped_column(String(150))
-    tipo: Mapped[str] = mapped_column(String(50))  # router, switch, OLT, servidor, access_point
+    tipo: Mapped[str] = mapped_column(String(50))  # router, switch, servidor, access_point, aws_resource
     marca: Mapped[str] = mapped_column(String(100))
     modelo: Mapped[str] = mapped_column(String(100))
     serie: Mapped[str] = mapped_column(String(100), unique=True)

@@ -8,6 +8,9 @@ export interface AppPreferences {
   sidebarCollapsed: boolean;
   density: Density;
   notificationsEnabled: boolean;
+  soundEnabled: boolean;
+  vibrationEnabled: boolean;
+  nocRefreshSeconds: number;
 }
 
 export const defaultPreferences: AppPreferences = {
@@ -15,6 +18,9 @@ export const defaultPreferences: AppPreferences = {
   sidebarCollapsed: false,
   density: "comfortable",
   notificationsEnabled: true,
+  soundEnabled: true,
+  vibrationEnabled: true,
+  nocRefreshSeconds: 7,
 };
 
 const STORAGE_KEY = "alesof_preferences";
@@ -57,7 +63,11 @@ export function getPreferences(): AppPreferences {
   if (!raw) return defaultPreferences;
   try {
     const parsed = { ...defaultPreferences, ...JSON.parse(raw) };
-    return { ...parsed, theme: normalizeTheme(parsed.theme) };
+    return {
+      ...parsed,
+      theme: normalizeTheme(parsed.theme),
+      nocRefreshSeconds: [5, 7, 10, 15].includes(Number(parsed.nocRefreshSeconds)) ? Number(parsed.nocRefreshSeconds) : 7,
+    };
   } catch {
     return defaultPreferences;
   }

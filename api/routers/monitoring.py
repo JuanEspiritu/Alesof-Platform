@@ -391,7 +391,13 @@ def resource_metrics(resource: str, metric: str = "", limit: int = Query(100, ge
 
 @router.get("/api/agents")
 def list_agents(db: Session = Depends(get_db), _user: Usuario = Depends(require_permissions("can_view_noc"))):
-    return [model_dict(item) for item in db.query(MonitoringAgent).all()]
+    result = []
+    for item in db.query(MonitoringAgent).all():
+        data = model_dict(item)
+        site = db.query(Site).filter(Site.id == item.site_id).first()
+        data["site"] = site.name if site else None
+        result.append(data)
+    return result
 
 
 @router.get("/api/agents/{agent_id}")
@@ -408,6 +414,8 @@ def list_hypervisors(db: Session = Depends(get_db), _user: Usuario = Depends(req
     for item in db.query(Hypervisor).all():
         data = model_dict(item)
         data["vm_count"] = db.query(VirtualMachine).filter(VirtualMachine.hypervisor_id == item.id).count()
+        site = db.query(Site).filter(Site.id == item.site_id).first()
+        data["site"] = site.name if site else None
         result.append(data)
     return result
 
@@ -469,7 +477,15 @@ async def sync_hypervisor(hypervisor_id: int, db: Session = Depends(get_db), _us
 
 @router.get("/api/vms")
 def list_vms(db: Session = Depends(get_db), _user: Usuario = Depends(require_permissions("can_view_noc"))):
-    return [model_dict(item) for item in db.query(VirtualMachine).order_by(VirtualMachine.name).all()]
+    result = []
+    for item in db.query(VirtualMachine).order_by(VirtualMachine.name).all():
+        data = model_dict(item)
+        hypervisor = db.query(Hypervisor).filter(Hypervisor.id == item.hypervisor_id).first()
+        site = db.query(Site).filter(Site.id == item.site_id).first()
+        data["hypervisor"] = hypervisor.name if hypervisor else None
+        data["site"] = site.name if site else None
+        result.append(data)
+    return result
 
 
 @router.get("/api/vms/{vm_id}")
@@ -594,7 +610,13 @@ async def network_dns(target: NetworkTarget, _user: Usuario = Depends(require_pe
 
 @router.get("/api/devices")
 def list_devices(db: Session = Depends(get_db), _user: Usuario = Depends(require_permissions("can_view_noc"))):
-    return [model_dict(item) for item in db.query(PhysicalDevice).order_by(PhysicalDevice.name).all()]
+    result = []
+    for item in db.query(PhysicalDevice).order_by(PhysicalDevice.name).all():
+        data = model_dict(item)
+        site = db.query(Site).filter(Site.id == item.site_id).first()
+        data["site"] = site.name if site else None
+        result.append(data)
+    return result
 
 
 @router.get("/api/devices/{device_id}")

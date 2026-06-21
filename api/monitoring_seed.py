@@ -204,12 +204,16 @@ def _seed_vms_and_services(db, sites, hypervisors):
 
 
 def _seed_devices_and_operations(db, sites):
+    legacy_esxi_device = db.query(PhysicalDevice).filter(PhysicalDevice.name == "ESXI-LIMA-01").first()
+    if legacy_esxi_device:
+        db.query(Alert).filter(Alert.device_id == legacy_esxi_device.id).update({"device_id": None}, synchronize_session=False)
+        db.delete(legacy_esxi_device)
+        db.flush()
     for name, dtype, ip, brand, model, criticality in [
         ("RTR-LIMA-01", "ROUTER", "10.10.50.1", "Cisco", "ISR 1100", "CRITICAL"),
         ("SW-LIMA-CORE-01", "SWITCH", "10.10.50.2", "Cisco", "Catalyst 1000", "CRITICAL"),
         ("SW-LIMA-ACC-01", "SWITCH", "10.10.50.3", "Cisco", "Catalyst 1000", "HIGH"),
         ("AP-LIMA-01", "ACCESS_POINT", "10.10.50.20", "Ubiquiti", "UniFi U6 Pro", "MEDIUM"),
-        ("ESXI-LIMA-01", "PHYSICAL_HOST", "168.121.48.254", "Dell", "PowerEdge R740", "CRITICAL"),
     ]:
         upsert(db, PhysicalDevice, {"name": name}, {
             "device_type": dtype, "ip": ip, "brand": brand, "model": model,

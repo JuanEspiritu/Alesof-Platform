@@ -6,8 +6,9 @@ import api from "@/lib/api";
 import { getUser } from "@/lib/auth";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-  Activity, AlertTriangle, CheckCircle2, Network, Play, Power, RefreshCw,
+  Activity, AlertTriangle, CheckCircle2, Loader2, Network, Play, Power, RefreshCw,
   Search, Server, ShieldAlert, Wifi,
 } from "lucide-react";
 
@@ -64,6 +65,37 @@ function displayState(kind: OperationsKind, item: Record<string, unknown>) {
   return kind === "sla" ? (item.at_risk ? "Con riesgo" : "Vigente") : state(item);
 }
 
+const fieldLabels: Record<string, string> = {
+  site: "Sede", hypervisor: "Hipervisor", ip: "Direccion IP", operating_system: "Sistema operativo",
+  cpu_count: "vCPU", ram_gb: "Memoria RAM", disk_gb: "Disco", vlan: "VLAN", criticality: "Criticidad",
+  brand: "Fabricante", model: "Modelo", latency_ms: "Latencia", management_port: "Puerto de gestion",
+  version: "Version", vm_count: "Maquinas virtuales", cpu_percent: "CPU", ram_percent: "Memoria",
+  datastore_percent: "Datastore", last_heartbeat: "Ultimo heartbeat", capabilities: "Capacidades",
+  last_check: "Ultima comprobacion", management_ip: "IP de gestion",
+};
+
+const preferredFields: Partial<Record<OperationsKind, string[]>> = {
+  vms: ["hypervisor", "site", "ip", "operating_system", "cpu_count", "ram_gb", "disk_gb", "vlan", "criticality"],
+  devices: ["site", "ip", "brand", "model", "last_check", "latency_ms", "management_port", "criticality"],
+  hypervisors: ["site", "management_ip", "version", "vm_count", "last_check", "cpu_percent", "ram_percent", "datastore_percent"],
+  agents: ["site", "version", "ip", "last_heartbeat", "capabilities"],
+};
+
+function visibleData(kind: OperationsKind, item: Record<string, unknown>) {
+  const preferred = preferredFields[kind];
+  if (preferred) return preferred.filter((key) => item[key] !== null && item[key] !== undefined).map((key) => [key, item[key]] as const).slice(0, 6);
+  return Object.entries(item).filter(([key, value]) => !["id", "name", "title", "description", "status", "power_state", "site_id", "hypervisor_id"].includes(key) && value !== null && typeof value !== "object").slice(0, 6);
+}
+
+function formatFieldValue(key: string, value: unknown) {
+  if (Array.isArray(value)) return value.join(", ");
+  if (key === "last_check" || key === "last_heartbeat") return new Date(String(value)).toLocaleString();
+  if (key === "latency_ms") return `${value} ms`;
+  if (["cpu_percent", "ram_percent", "datastore_percent"].includes(key)) return `${value}%`;
+  if (["ram_gb", "disk_gb"].includes(key)) return `${value} GB`;
+  return String(value);
+}
+
 const statusTone: Record<string, string> = {
   ONLINE: "border-emerald-200 bg-emerald-50 text-emerald-700",
   poweredOn: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -86,6 +118,8 @@ export function OperationsPage({ kind }: { kind: OperationsKind }) {
   const [items, setItems] = useState<Record<string, unknown>[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
+  const [acting, setActing] = useState(false);
+  const [pendingAction, setPendingAction] = useState<{ path: string; success: string; confirmation: string; mode: "default" | "connectivity" } | null>(null);
   const user = getUser();
 
   async function load() {
@@ -109,16 +143,31 @@ export function OperationsPage({ kind }: { kind: OperationsKind }) {
   const online = items.filter((item) => ["ONLINE", "poweredOn", "RESOLVED", "Bajo", "Vigente"].includes(displayState(kind, item))).length;
   const critical = items.filter((item) => ["OFFLINE", "poweredOff", "ACTIVE", "CRITICAL", "Critico", "Con riesgo"].includes(displayState(kind, item))).length;
 
-  async function action(path: string, success: string, confirmation?: string) {
-    if (confirmation && !window.confirm(confirmation)) return;
+  async function executeAction(path: string, success: string, mode: "default" | "connectivity" = "default") {
+    setActing(true);
     try {
-      await api.post(path);
-      toast.success(success);
+      const { data } = await api.post(path);
+      if (mode === "connectivity") {
+        const result = data.check ?? data;
+        const isOnline = ["ONLINE", "UP"].includes(String(result.status).toUpperCase());
+        if (isOnline) toast.success(`Conectividad confirmada${result.latency_ms != null ? ` · ${result.latency_ms} ms` : ""}`);
+        else toast.error(`Sin respuesta del recurso${result.error ? ` · ${result.error}` : ""}`);
+      } else {
+        toast.success(success);
+      }
       await load();
     } catch (error: unknown) {
       const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       toast.error(typeof detail === "string" ? detail : "La accion no pudo completarse");
+    } finally {
+      setActing(false);
+      setPendingAction(null);
     }
+  }
+
+  function action(path: string, success: string, confirmation?: string, mode: "default" | "connectivity" = "default") {
+    if (confirmation) setPendingAction({ path, success, confirmation, mode });
+    else void executeAction(path, success, mode);
   }
 
   if (loading) return <div className="grid gap-4 lg:grid-cols-2"><Skeleton className="h-80 rounded-3xl" /><Skeleton className="h-80 rounded-3xl" /></div>;
@@ -147,20 +196,20 @@ export function OperationsPage({ kind }: { kind: OperationsKind }) {
           const itemState = displayState(kind, item);
           const id = Number(item.id ?? index);
           return (
-            <article key={`${kind}-${id}-${index}`} className="rounded-[1.5rem] border p-5 shadow-sm" style={{ background: "var(--app-surface)", borderColor: "var(--app-border)" }}>
+            <article key={`${kind}-${id}-${index}`} className="border p-5 shadow-sm" style={{ background: "var(--app-surface)", borderColor: "var(--app-border)", borderRadius: 8 }}>
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0"><span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-black ${statusTone[itemState] ?? "border-sky-200 bg-sky-50 text-sky-700"}`}>{itemState}</span><h2 className="mt-3 truncate text-lg font-black" style={{ color: "var(--app-text)" }}>{label(item)}</h2><p className="mt-1 text-xs" style={{ color: "var(--app-muted)" }}>{String(item.service_name ?? item.description ?? item.device_type ?? item.resource_type ?? item.source ?? "Alesof Platform")}</p></div>
                 {itemState === "ONLINE" || itemState === "poweredOn" ? <CheckCircle2 className="h-5 w-5 text-emerald-500" /> : <AlertTriangle className="h-5 w-5 text-amber-500" />}
               </div>
               <div className="mt-5 grid grid-cols-2 gap-3">
-                {Object.entries(item).filter(([key, value]) => !["id", "name", "title", "description", "status", "power_state"].includes(key) && value !== null && typeof value !== "object").slice(0, 6).map(([key, value]) => <Data key={key} label={key.replaceAll("_", " ")} value={String(value)} />)}
+                {visibleData(kind, item).map(([key, value]) => <Data key={key} label={fieldLabels[key] ?? key.replaceAll("_", " ")} value={formatFieldValue(key, value)} />)}
               </div>
               <div className="mt-5 flex flex-wrap gap-2">
                 {kind === "vms" && user?.permissions?.includes("can_power_on_vm") && itemState !== "poweredOn" && <Action label="Encender" onClick={() => action(`/api/vms/${id}/power-on?confirm=true`, "VM encendida", `¿Encender ${label(item)} en VMware?`)} />}
                 {kind === "vms" && user?.permissions?.includes("can_restart_vm") && itemState === "poweredOn" && <Action label="Reiniciar" onClick={() => action(`/api/vms/${id}/restart?confirm=true`, "VM reiniciada", `¿Reiniciar ${label(item)} en VMware? El servicio se interrumpira.`)} />}
                 {kind === "vms" && user?.permissions?.includes("can_power_off_vm") && itemState === "poweredOn" && <Action label="Apagar" danger onClick={() => action(`/api/vms/${id}/power-off?confirm=true`, "VM apagada", `¿Apagar ${label(item)} en VMware? Esta accion afecta servicios.`)} />}
-                {kind === "devices" && user?.permissions?.includes("can_run_network_tests") && <Action label="Probar conectividad" onClick={() => action(`/api/devices/${id}/ping`, "Prueba completada")} />}
-                {kind === "hypervisors" && user?.permissions?.includes("can_run_network_tests") && <Action label="Probar host" onClick={() => action(`/api/hypervisors/${id}/ping`, "Host verificado")} />}
+                {kind === "devices" && user?.permissions?.includes("can_run_network_tests") && <Action label="Probar conectividad" onClick={() => action(`/api/devices/${id}/ping`, "Conectividad verificada", undefined, "connectivity")} />}
+                {kind === "hypervisors" && user?.permissions?.includes("can_run_network_tests") && <Action label="Probar host" onClick={() => action(`/api/hypervisors/${id}/ping`, "Host verificado", undefined, "connectivity")} />}
                 {kind === "hypervisors" && user?.permissions?.includes("can_manage_vms") && <Action label="Sincronizar VMware" onClick={() => action(`/api/hypervisors/${id}/sync`, "Inventario VMware sincronizado")} />}
                 {kind === "alerts" && itemState === "ACTIVE" && user?.permissions?.includes("can_acknowledge_alert") && <Action label="Reconocer" onClick={() => action(`/api/alerts/${id}/acknowledge`, "Alerta reconocida")} />}
                 {kind === "alerts" && itemState !== "RESOLVED" && user?.permissions?.includes("can_resolve_alert") && <Action label="Resolver" onClick={() => action(`/api/alerts/${id}/resolve`, "Alerta resuelta")} />}
@@ -173,10 +222,31 @@ export function OperationsPage({ kind }: { kind: OperationsKind }) {
           );
         })}
       </section>
+
+      <Dialog open={Boolean(pendingAction)} onOpenChange={(open) => !open && !acting && setPendingAction(null)}>
+        <DialogContent className="max-w-md border p-0" style={{ background: "var(--app-surface)", borderColor: "var(--app-border)", borderRadius: 8 }}>
+          <div className="border-b p-5" style={{ borderColor: "var(--app-border)" }}>
+            <DialogHeader>
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-amber-50 text-amber-700">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <DialogTitle style={{ color: "var(--app-text)" }}>Confirmar accion operativa</DialogTitle>
+            </DialogHeader>
+            <p className="mt-3 text-sm leading-6" style={{ color: "var(--app-muted)" }}>{pendingAction?.confirmation}</p>
+          </div>
+          <div className="flex justify-end gap-2 p-4">
+            <button type="button" disabled={acting} onClick={() => setPendingAction(null)} className="h-10 rounded-lg border px-4 text-xs font-black disabled:opacity-50" style={{ borderColor: "var(--app-border)", color: "var(--app-text)" }}>Cancelar</button>
+            <button type="button" disabled={acting || !pendingAction} onClick={() => pendingAction && void executeAction(pendingAction.path, pendingAction.success, pendingAction.mode)} className="inline-flex h-10 items-center gap-2 rounded-lg bg-red-600 px-4 text-xs font-black text-white disabled:opacity-50">
+              {acting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+              {acting ? "Procesando" : "Confirmar"}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
 function Metric({ value, label, critical = false }: { value: number; label: string; critical?: boolean }) { return <div className="rounded-2xl p-4" style={{ background: critical ? "#dc2626" : "var(--app-surface-soft)", color: critical ? "white" : "var(--app-text)" }}><p className="text-2xl font-black">{value}</p><p className="mt-1 text-[11px] font-bold opacity-70">{label}</p></div>; }
-function Data({ label, value }: { label: string; value: string }) { return <div className="rounded-2xl px-3 py-2.5" style={{ background: "var(--app-surface-soft)" }}><p className="truncate text-[10px] font-black uppercase" style={{ color: "var(--app-muted)" }}>{label}</p><p className="mt-1 truncate text-xs font-bold" style={{ color: "var(--app-text)" }}>{value}</p></div>; }
+function Data({ label, value }: { label: string; value: string }) { return <div className="rounded-lg px-3 py-2.5" style={{ background: "var(--app-surface-soft)" }}><p className="truncate text-[10px] font-black uppercase" style={{ color: "var(--app-muted)" }}>{label}</p><p className="mt-1 truncate text-xs font-bold" style={{ color: "var(--app-text)" }}>{value}</p></div>; }
 function Action({ label, onClick, danger = false }: { label: string; onClick: () => void; danger?: boolean }) { return <button type="button" onClick={onClick} className="inline-flex h-9 items-center gap-2 rounded-xl px-3 text-xs font-black text-white" style={{ background: danger ? "#dc2626" : "var(--app-brand)" }}><Play className="h-3.5 w-3.5" />{label}</button>; }

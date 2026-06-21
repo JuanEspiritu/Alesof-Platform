@@ -21,7 +21,6 @@ import {
   CheckCircle2,
   Clock3,
   Headset,
-  Receipt,
   Server,
   ShieldCheck,
   Users,
@@ -63,11 +62,16 @@ interface DashData {
 }
 interface TicketEstado { estado: string; cantidad: number; }
 interface ClienteMes { anio: number; mes: number; total: number; label?: string; }
-interface Sede { sede: string; total_equipos: number; activos: number; disponibilidad: number; }
 interface Ticket { id: number; titulo: string; prioridad: string; estado: string; cliente: string | null; tecnico: string | null; }
 interface ExecutiveSummary {
   availability: number; services_down: number; vms_off: number; sites_with_alerts: number;
   dmz_services_at_risk: number; sla_at_risk: number; risk: { score: number; level: string };
+}
+interface NocSummary {
+  status: "success" | "info" | "warning" | "critical";
+  kpis: { availability: number; devices_total: number; devices_online: number; open_tickets: number; };
+  sites: Array<{ name: string; role: string; devices_total: number; devices_online: number; availability: number; status: string; source: string; }>;
+  events: Array<{ id: string; severity: "success" | "info" | "warning" | "critical"; title: string; message: string; source: string; href: string; }>;
 }
 
 export default function DashboardPage() {
@@ -75,7 +79,7 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashData | null>(null);
   const [ticketsEst, setTicketsEst] = useState<TicketEstado[]>([]);
   const [clientesMes, setClientesMes] = useState<ClienteMes[]>([]);
-  const [sedes, setSedes] = useState<Sede[]>([]);
+  const [noc, setNoc] = useState<NocSummary | null>(null);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [executive, setExecutive] = useState<ExecutiveSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -85,7 +89,7 @@ export default function DashboardPage() {
       api.get("/api/reportes/dashboard"),
       api.get("/api/soporte/por-estado"),
       api.get("/api/reportes/clientes-por-mes"),
-      api.get("/api/reportes/disponibilidad-sedes"),
+      api.get("/api/noc/status"),
       api.get("/api/reportes/ultimos-tickets"),
       api.get("/api/dashboard/summary"),
     ])
@@ -93,7 +97,7 @@ export default function DashboardPage() {
         setData(d.data);
         setTicketsEst(e.data);
         setClientesMes(c.data.map((x: ClienteMes) => ({ ...x, label: `${meses[x.mes - 1]}` })));
-        setSedes(s.data);
+        setNoc(s.data);
         setTickets(t.data);
         setExecutive(summary.data);
       })
@@ -104,10 +108,6 @@ export default function DashboardPage() {
     () => tickets.filter((ticket) => ticket.prioridad === "crítica" && ticket.estado !== "cerrado").length,
     [tickets],
   );
-  const avgAvailability = useMemo(() => {
-    if (!sedes.length) return 0;
-    return Math.round(sedes.reduce((acc, sede) => acc + sede.disponibilidad, 0) / sedes.length);
-  }, [sedes]);
   const firstName = user?.nombre?.split(" ")[0] ?? "usuario";
 
   if (loading) {
@@ -133,7 +133,7 @@ export default function DashboardPage() {
                 <div>
                   <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-bold" style={{ borderColor: "var(--app-border)", color: "var(--app-accent)", background: "var(--app-surface-soft)" }}>
                     <span className="h-1.5 w-1.5 rounded-full bg-teal-300" />
-                    Centro operativo en linea
+                    API operativa conectada
                   </div>
                   <h1 className="mt-5 text-4xl font-black tracking-tight md:text-5xl" style={{ color: "var(--app-text)" }}>
                     Hola, {firstName}.
@@ -144,7 +144,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="rounded-2xl border p-4 text-right" style={{ background: "var(--app-surface-soft)", borderColor: "var(--app-border)" }}>
                   <p className="text-xs font-semibold" style={{ color: "var(--app-muted)" }}>Disponibilidad promedio</p>
-                  <p className="mt-1 text-4xl font-black" style={{ color: "var(--app-accent)" }}>{executive?.availability ?? avgAvailability}%</p>
+                  <p className="mt-1 text-4xl font-black" style={{ color: "var(--app-accent)" }}>{noc?.kpis.availability ?? 0}%</p>
                 </div>
               </div>
 
@@ -180,41 +180,38 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <aside className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
+        <aside className="border p-5 shadow-sm" style={{ background: "var(--app-surface)", borderColor: "var(--app-border)", borderRadius: 8 }}>
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-black text-slate-900">Notificaciones</h2>
-              <p className="text-xs text-slate-500">Prioridad operativa</p>
+              <h2 className="text-sm font-black" style={{ color: "var(--app-text)" }}>Eventos NOC</h2>
+              <p className="text-xs" style={{ color: "var(--app-muted)" }}>Información persistida en la API</p>
             </div>
             <Badge className="rounded-full bg-teal-50 text-teal-700 hover:bg-teal-50">Live</Badge>
           </div>
           <div className="space-y-3">
-            {[
-              { icon: AlertTriangle, title: "Revisar tickets criticos", text: `${criticalTickets} incidencias requieren seguimiento`, tone: "border-red-200 bg-red-50 text-red-700" },
-              { icon: Receipt, title: "Facturas pendientes", text: "Validar cartera y vencimientos del mes", tone: "border-amber-200 bg-amber-50 text-amber-700" },
-              { icon: ShieldCheck, title: "Backups nocturnos", text: "Ultima ventana finalizo correctamente", tone: "border-emerald-200 bg-emerald-50 text-emerald-700" },
-              { icon: Wifi, title: "Enlaces de sede", text: "Monitoreo estable en sedes principales", tone: "border-cyan-200 bg-cyan-50 text-cyan-700" },
-            ].map((item) => (
-              <div key={item.title} className={`rounded-2xl border p-4 ${item.tone}`}>
+            {noc?.events.slice(0, 4).map((item) => {
+              const tone = { critical: "border-red-200 bg-red-50 text-red-700", warning: "border-amber-200 bg-amber-50 text-amber-700", info: "border-sky-200 bg-sky-50 text-sky-700", success: "border-emerald-200 bg-emerald-50 text-emerald-700" }[item.severity];
+              return <Link href={item.href} key={item.id} className={`block rounded-lg border p-4 ${tone}`}>
                 <div className="flex items-start gap-3">
-                  <item.icon className="mt-0.5 h-4 w-4" />
+                  <AlertTriangle className="mt-0.5 h-4 w-4" />
                   <div>
                     <p className="text-sm font-black">{item.title}</p>
-                    <p className="mt-1 text-xs opacity-75">{item.text}</p>
+                    <p className="mt-1 text-xs opacity-75">{item.message}</p>
+                    <p className="mt-2 text-[10px] font-black uppercase opacity-60">{item.source}</p>
                   </div>
                 </div>
-              </div>
-            ))}
+              </Link>;
+            })}
           </div>
         </aside>
       </section>
 
       <section className="scroll-rise grid gap-4 lg:grid-cols-[1fr_0.8fr]">
-        <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="border p-5 shadow-sm" style={{ background: "var(--app-surface)", borderColor: "var(--app-border)", borderRadius: 8 }}>
           <div className="mb-5 flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-black text-slate-900">Crecimiento de clientes</h2>
-              <p className="text-xs text-slate-500">Altas registradas por mes</p>
+              <h2 className="text-sm font-black" style={{ color: "var(--app-text)" }}>Crecimiento de clientes</h2>
+              <p className="text-xs" style={{ color: "var(--app-muted)" }}>Altas registradas por mes</p>
             </div>
             <BarChart3 className="h-5 w-5 text-slate-300" />
           </div>
@@ -229,17 +226,17 @@ export default function DashboardPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" />
               <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#94a3b8" }} />
               <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#94a3b8" }} />
-              <Tooltip contentStyle={{ borderRadius: 14, border: "1px solid #e2e8f0", fontSize: 12 }} />
+              <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid var(--app-border)", background: "var(--app-surface)", color: "var(--app-text)", fontSize: 12 }} />
               <Area type="monotone" dataKey="total" stroke="#0891b2" strokeWidth={3} fill="url(#clientesGradient)" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
 
-        <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="border p-5 shadow-sm" style={{ background: "var(--app-surface)", borderColor: "var(--app-border)", borderRadius: 8 }}>
           <div className="mb-5 flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-black text-slate-900">Tickets por estado</h2>
-              <p className="text-xs text-slate-500">Carga actual de soporte</p>
+              <h2 className="text-sm font-black" style={{ color: "var(--app-text)" }}>Tickets por estado</h2>
+              <p className="text-xs" style={{ color: "var(--app-muted)" }}>Carga actual de soporte</p>
             </div>
             <Headset className="h-5 w-5 text-slate-300" />
           </div>
@@ -248,7 +245,7 @@ export default function DashboardPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" vertical={false} />
               <XAxis dataKey="estado" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#94a3b8" }} />
               <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#94a3b8" }} />
-              <Tooltip contentStyle={{ borderRadius: 14, border: "1px solid #e2e8f0", fontSize: 12 }} />
+              <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid var(--app-border)", background: "var(--app-surface)", color: "var(--app-text)", fontSize: 12 }} />
               <Bar dataKey="cantidad" fill="#0f766e" radius={[10, 10, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -256,30 +253,31 @@ export default function DashboardPage() {
       </section>
 
       <section className="scroll-reveal grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
-        <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="border p-5 shadow-sm" style={{ background: "var(--app-surface)", borderColor: "var(--app-border)", borderRadius: 8 }}>
           <div className="mb-5 flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-950 text-white">
               <Server className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-sm font-black text-slate-900">Infraestructura por sede</h2>
-              <p className="text-xs text-slate-500">Equipos activos vs registrados</p>
+              <h2 className="text-sm font-black" style={{ color: "var(--app-text)" }}>Infraestructura por sede</h2>
+              <p className="text-xs" style={{ color: "var(--app-muted)" }}>Activos observados por fuente de telemetria</p>
             </div>
           </div>
           <div className="space-y-4">
-            {sedes.map((sede) => {
-              const color = sede.disponibilidad >= 90 ? "#22c55e" : sede.disponibilidad >= 70 ? "#f59e0b" : "#ef4444";
+            {noc?.sites.map((sede) => {
+              const hasTelemetry = ["AGENT", "VMWARE", "AWS"].includes(sede.source);
+              const color = !hasTelemetry ? "#94a3b8" : sede.availability >= 90 ? "#22c55e" : sede.availability >= 70 ? "#f59e0b" : "#ef4444";
               return (
-                <div key={sede.sede} className="rounded-2xl border border-slate-200 p-4">
+                <div key={sede.name} className="rounded-lg border p-4" style={{ borderColor: "var(--app-border)" }}>
                   <div className="mb-3 flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-black text-slate-900">{sede.sede}</p>
-                      <p className="text-xs text-slate-500">{sede.activos} de {sede.total_equipos} equipos activos</p>
+                      <p className="text-sm font-black" style={{ color: "var(--app-text)" }}>{sede.name}</p>
+                      <p className="text-xs" style={{ color: "var(--app-muted)" }}>{sede.devices_online} de {sede.devices_total} activos · {sede.source}</p>
                     </div>
-                    <span className="text-lg font-black" style={{ color }}>{sede.disponibilidad}%</span>
+                    <span className="text-lg font-black" style={{ color }}>{hasTelemetry ? `${sede.availability}%` : "Sin datos"}</span>
                   </div>
                   <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                    <div className="h-full rounded-full" style={{ width: `${sede.disponibilidad}%`, background: color }} />
+                    <div className="h-full rounded-full" style={{ width: `${hasTelemetry ? sede.availability : 0}%`, background: color }} />
                   </div>
                 </div>
               );
@@ -287,19 +285,19 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+        <div className="overflow-hidden border shadow-sm" style={{ background: "var(--app-surface)", borderColor: "var(--app-border)", borderRadius: 8 }}>
+          <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--app-border)" }}>
             <div>
-              <h2 className="text-sm font-black text-slate-900">Ultimos tickets</h2>
-              <p className="text-xs text-slate-500">Incidencias recientes del NOC</p>
+              <h2 className="text-sm font-black" style={{ color: "var(--app-text)" }}>Ultimos tickets</h2>
+              <p className="text-xs" style={{ color: "var(--app-muted)" }}>Incidencias recientes del NOC</p>
             </div>
-            <Link href="/dashboard/soporte" className="flex items-center gap-1 text-xs font-black text-slate-900 hover:underline">
+            <Link href="/dashboard/soporte" className="flex items-center gap-1 text-xs font-black hover:underline" style={{ color: "var(--app-text)" }}>
               Ver soporte <ArrowUpRight className="h-3.5 w-3.5" />
             </Link>
           </div>
           <Table>
             <TableHeader>
-              <TableRow className="bg-slate-50 hover:bg-slate-50">
+              <TableRow style={{ background: "var(--app-surface-soft)" }}>
                 <TableHead className="text-xs">Ticket</TableHead>
                 <TableHead className="hidden text-xs md:table-cell">Cliente</TableHead>
                 <TableHead className="text-xs">Prioridad</TableHead>
@@ -314,16 +312,16 @@ export default function DashboardPage() {
                   <TableRow key={ticket.id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-xs font-black text-slate-500">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg text-xs font-black" style={{ background: "var(--app-surface-soft)", color: "var(--app-muted)" }}>
                           #{ticket.id}
                         </div>
                         <div>
-                          <p className="max-w-[220px] truncate text-sm font-bold text-slate-900">{ticket.titulo}</p>
-                          <p className="text-xs text-slate-400">{ticket.tecnico ?? "Sin tecnico asignado"}</p>
+                          <p className="max-w-[220px] truncate text-sm font-bold" style={{ color: "var(--app-text)" }}>{ticket.titulo}</p>
+                          <p className="text-xs" style={{ color: "var(--app-muted)" }}>{ticket.tecnico ?? "Sin tecnico asignado"}</p>
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="hidden text-sm text-slate-500 md:table-cell">{ticket.cliente ?? "-"}</TableCell>
+                    <TableCell className="hidden text-sm md:table-cell" style={{ color: "var(--app-muted)" }}>{ticket.cliente ?? "-"}</TableCell>
                     <TableCell>
                       <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${prioridad?.cls ?? ""}`}>
                         {prioridad?.label ?? ticket.prioridad}
@@ -344,14 +342,14 @@ export default function DashboardPage() {
 
       <section className="scroll-rise grid gap-4 md:grid-cols-3">
         {[
-          { title: "Politicas de seguridad", text: "Renovar claves VPN y revisar accesos de terceros.", icon: ShieldCheck },
-          { title: "Ventana de mantenimiento", text: "Core Lima 2 requiere validacion posterior al cambio.", icon: Clock3 },
-          { title: "Estado general", text: "Servicios principales operativos y sin degradacion mayor.", icon: CheckCircle2 },
+          { title: "Telemetria real", text: `${noc?.sites.filter((site) => ["AGENT", "VMWARE", "AWS"].includes(site.source)).length ?? 0} de ${noc?.sites.length ?? 0} sedes con fuente activa.`, icon: Wifi },
+          { title: "Tickets criticos", text: `${criticalTickets} incidencias requieren seguimiento operativo.`, icon: Clock3 },
+          { title: "Estado general", text: noc?.status === "critical" ? "Existe un incidente critico activo." : noc?.status === "warning" ? "Hay advertencias pendientes de revision." : "No hay alertas criticas activas.", icon: CheckCircle2 },
         ].map((item) => (
-          <div key={item.title} className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
-            <item.icon className="mb-5 h-5 w-5 text-slate-400" />
-            <h3 className="text-sm font-black text-slate-900">{item.title}</h3>
-            <p className="mt-2 text-sm leading-6 text-slate-500">{item.text}</p>
+          <div key={item.title} className="border p-5 shadow-sm" style={{ background: "var(--app-surface)", borderColor: "var(--app-border)", borderRadius: 8 }}>
+            <item.icon className="mb-5 h-5 w-5" style={{ color: "var(--app-muted)" }} />
+            <h3 className="text-sm font-black" style={{ color: "var(--app-text)" }}>{item.title}</h3>
+            <p className="mt-2 text-sm leading-6" style={{ color: "var(--app-muted)" }}>{item.text}</p>
           </div>
         ))}
       </section>

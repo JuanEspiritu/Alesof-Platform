@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     VMWARE_ESXI02_URL: str = ""
     VMWARE_ESXI03_URL: str = ""
     VMWARE_POLL_SECONDS: int = 60
+    METRIC_RETENTION_DAYS: int = 30
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_CHAT_ID: str = ""
     TWILIO_ACCOUNT_SID: str = ""

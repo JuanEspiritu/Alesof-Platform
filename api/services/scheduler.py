@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from core.config import settings
 from core.database import SessionLocal
-from models.monitoring import Alert, Hypervisor, MonitoringAgent, VirtualMachine
+from models.monitoring import Alert, Hypervisor, MonitoringAgent, MonitoringMetric, VirtualMachine
 from providers.vmware import VMwareMonitoringProvider
 from services.monitoring_service import create_alert, create_event, record_metric, utcnow
 from services.websocket_manager import noc_manager
@@ -78,6 +78,7 @@ async def sync_vmware(db):
 
 async def monitoring_scheduler():
     last_vmware_sync = 0.0
+    last_metric_cleanup = 0.0
     while True:
         await asyncio.sleep(15)
         db = SessionLocal()
@@ -100,5 +101,10 @@ async def monitoring_scheduler():
             if time.monotonic() - last_vmware_sync >= max(settings.VMWARE_POLL_SECONDS, 30):
                 await sync_vmware(db)
                 last_vmware_sync = time.monotonic()
+            if time.monotonic() - last_metric_cleanup >= 3600:
+                cutoff = datetime.now(timezone.utc) - timedelta(days=max(settings.METRIC_RETENTION_DAYS, 1))
+                db.query(MonitoringMetric).filter(MonitoringMetric.created_at < cutoff).delete(synchronize_session=False)
+                db.commit()
+                last_metric_cleanup = time.monotonic()
         finally:
             db.close()

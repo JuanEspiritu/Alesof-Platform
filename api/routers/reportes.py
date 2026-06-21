@@ -76,7 +76,7 @@ def disponibilidad_sedes(
     db: Session = Depends(get_db),
     _user: Usuario = Depends(require_roles("administrador", "supervisor")),
 ):
-    sedes = ["Lima", "Arequipa", "AWS"]
+    sedes = ["Lima", "Arequipa", "Trujillo"]
     result = []
     for sede in sedes:
         total = db.query(Equipo).filter(Equipo.sede == sede).count()

@@ -34,6 +34,40 @@ pnpm install
 pnpm dev
 ```
 
+## Esquema y datos iniciales
+
+Alembic administra el esquema. La API ejecuta `alembic upgrade head` al iniciar cuando `AUTO_MIGRATE=true`.
+
+Modos disponibles:
+
+- `SEED_MODE=none`: no inserta información.
+- `SEED_MODE=reference`: registra topología, servicios y controles pendientes, sin usuarios ni eventos demo.
+- `SEED_MODE=demo`: carga cuentas, clientes, facturas y escenarios ficticios; no está permitido con `APP_ENV=production`.
+
+Producción recomendada:
+
+```env
+APP_ENV=production
+AUTO_MIGRATE=true
+SEED_MODE=reference
+ENABLE_SIMULATION=false
+```
+
+Crear el primer administrador sin contraseña predeterminada:
+
+```bash
+cd api
+source venv/bin/activate
+python -m scripts.create_admin --email administrador@alesof.pe --name "Administrador Alesof"
+```
+
+Crear una nueva migración después de modificar modelos:
+
+```bash
+alembic revision --autogenerate -m "descripcion"
+alembic upgrade head
+```
+
 ## Agente on-premise
 
 Configurar variables sin guardarlas en Git:
@@ -86,7 +120,7 @@ El JWT no se incluye en la URL. Si WebSocket falla, el frontend reintenta cada c
 
 ## Simulaciones
 
-Con usuario administrador o supervisor autorizado:
+Las simulaciones son exclusivas de desarrollo y permanecen bloqueadas por defecto. Para habilitarlas en un entorno aislado use `ENABLE_SIMULATION=true`. Con usuario administrador o supervisor autorizado:
 
 ```text
 POST /api/simulation/haproxy-down
@@ -114,7 +148,7 @@ Una simulacion genera evento, alerta, WebSocket y, cuando aplica, ticket automat
 - `APP-LIMA-01`: `10.10.30.50`, API FastAPI en TCP `8000`.
 
 - ESXi-01 `172.17.25.23`: Router-Master, Router-Backup, Creador-ISP2, VC-LIMA-01, SW-LIMA-CORE-01 y SW-LIMA-CORE-02.
-- ESXi-02 `172.17.25.19`: AD-LIMA-01, DB-LIMA-01, DHCP-LIMA-01, GLPI-LIMA-01, PBX-LIMA-01 y ZABBIX-LIMA-01.
-- ESXi-03 `172.17.25.2`: APP-LIMA-01, FILE-LIMA-01, HAProxy, WEB-LIMA-01, MAIL-LIMA-01 y DNS2-LIMA-01.
+- ESXi-02 `172.17.25.19`: AD-LIMA-01, DB-LIMA-01, DHCP-LIMA-01, GLPI-LIMA-01, PBX-LIMA-01 y MON-LIMA-01.
+- ESXi-03 `172.17.25.2`: APP-LIMA-01, FILE-LIMA-01, HAProxy, WEB-LIMA-01, MAIL-LIMA-01, DNS2-LIMA-01 y Veeam-Proxy.
 
 La sincronizacion real debe revisarse antes de ejecutar cualquier accion porque el inventario actual puede diferir de esta distribucion objetivo.

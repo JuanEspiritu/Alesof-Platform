@@ -2,9 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { toast } from "sonner";
 import api from "@/lib/api";
-import { getUser } from "@/lib/auth";
 import { getPreferences } from "@/lib/preferences";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -139,7 +137,6 @@ function requestBrowserNotification(event: NocEvent) {
 
 export default function NocPage() {
   const preferences = getPreferences();
-  const user = getUser();
   const [data, setData] = useState<NocData | null>(null);
   const [loading, setLoading] = useState(true);
   const [alarmEnabled, setAlarmEnabled] = useState(false);
@@ -182,7 +179,7 @@ export default function NocPage() {
       try {
         const { data: ticketData } = await api.post<{ ticket: string }>("/api/noc/ws-ticket");
         if (stopped) return;
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || window.location.origin;
         const wsUrl = `${apiUrl.replace(/^http/, "ws")}/ws/noc?ticket=${encodeURIComponent(ticketData.ticket)}`;
         socket = new WebSocket(wsUrl);
         socket.onopen = () => setLiveMode("websocket");
@@ -242,31 +239,6 @@ export default function NocPage() {
     playNocAlarm();
   }
 
-  function simulateCriticalCall() {
-    const event: NocEvent = {
-      id: "demo-critical",
-      severity: "critical",
-      title: "Simulacion: VPN Lima - Trujillo degradada",
-      message: "El canal de contingencia detecto perdida alta. Escalar al tecnico NOC de guardia.",
-      source: "Demo NOC",
-      href: "/dashboard/noc",
-    };
-    if (alarmEnabled) playNocAlarm();
-    if (preferences.vibrationEnabled) navigator.vibrate?.([300, 100, 300, 100, 500]);
-    requestBrowserNotification(event);
-    setIncomingEvent(event);
-  }
-
-  async function runScenario(scenario: string) {
-    try {
-      await api.post(`/api/simulation/${scenario}`);
-      toast.success(scenario === "reset" ? "Simulacion restablecida" : "Escenario NOC activado");
-      await loadNoc();
-    } catch {
-      toast.error("No se pudo ejecutar el escenario");
-    }
-  }
-
   if (loading && !data) {
     return (
       <div className="space-y-5">
@@ -305,15 +277,6 @@ export default function NocPage() {
               >
                 <BellRing className="h-4 w-4" />
                 {alarmEnabled ? "Alerta NOC activa" : "Activar alerta NOC"}
-              </button>
-              <button
-                type="button"
-                onClick={simulateCriticalCall}
-                className="inline-flex h-11 items-center gap-2 rounded-2xl border px-5 text-sm font-black hover:-translate-y-0.5"
-                style={{ borderColor: "var(--app-border)", color: "var(--app-text)", background: "var(--app-surface-soft)" }}
-              >
-                <PhoneCall className="h-4 w-4" />
-                Simular llamada
               </button>
               <button
                 type="button"
@@ -465,32 +428,6 @@ export default function NocPage() {
           </div>
         ))}
       </section>
-
-      {user?.permissions?.includes("can_manage_services") && (
-        <section className="rounded-[1.5rem] border p-5 shadow-sm" style={{ background: "var(--app-surface)", borderColor: "var(--app-border)" }}>
-          <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-            <div>
-              <h2 className="text-sm font-black" style={{ color: "var(--app-text)" }}>Escenarios de demostracion</h2>
-              <p className="mt-1 text-xs" style={{ color: "var(--app-muted)" }}>Generan evento, alerta, WebSocket y ticket automatico cuando corresponde.</p>
-            </div>
-            <button type="button" onClick={() => runScenario("reset")} className="h-10 rounded-xl border px-4 text-xs font-black" style={{ borderColor: "var(--app-border)", color: "var(--app-text)" }}>Restablecer todo</button>
-          </div>
-          <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              ["haproxy-down", "HAProxy caido"], ["web-down", "Web DMZ caida"],
-              ["vpn-down", "VPN Lima-Trujillo"], ["vm-down", "VM critica apagada"],
-              ["backup-failed", "Backup fallido"], ["high-cpu", "CPU ESXi alta"],
-              ["switch-down", "Switch core caido"], ["agent-offline", "Agente offline"],
-            ].map(([scenario, label]) => (
-              <button key={scenario} type="button" onClick={() => runScenario(scenario)}
-                className="h-11 rounded-xl border px-3 text-left text-xs font-black hover:-translate-y-0.5"
-                style={{ background: "var(--app-surface-soft)", borderColor: "var(--app-border)", color: "var(--app-text)" }}>
-                {label}
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
 
       {incomingEvent && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-sm">

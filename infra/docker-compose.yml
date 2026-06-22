@@ -7,10 +7,10 @@ services:
     container_name: alesof-db
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: root2026
-      MYSQL_DATABASE: app
-      MYSQL_USER: app
-      MYSQL_PASSWORD: "1234"
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?define MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-alesof}
+      MYSQL_USER: ${MYSQL_USER:-alesof_app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?define MYSQL_PASSWORD}
     ports:
       - "3306:3306"
     volumes:
@@ -28,8 +28,13 @@ services:
     container_name: alesof-api
     restart: always
     environment:
-      DATABASE_URL: mysql+pymysql://app:1234@db:3306/app
-      SECRET_KEY: alesof-secret-key-2026-muy-segura
+      APP_ENV: ${APP_ENV:-production}
+      AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
+      SEED_MODE: ${SEED_MODE:-reference}
+      ENABLE_SIMULATION: ${ENABLE_SIMULATION:-false}
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-alesof_app}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-alesof}
+      SECRET_KEY: ${SECRET_KEY:?define SECRET_KEY}
+      AGENT_API_KEY: ${AGENT_API_KEY:?define AGENT_API_KEY}
       ALGORITHM: HS256
       ACCESS_TOKEN_EXPIRE_MINUTES: 30
     ports:
@@ -45,10 +50,10 @@ services:
     build:
       context: ../web
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
     container_name: alesof-web
     restart: always
-    environment:
-      NEXT_PUBLIC_API_URL: http://api:8000
     ports:
       - "3000:3000"
     depends_on:

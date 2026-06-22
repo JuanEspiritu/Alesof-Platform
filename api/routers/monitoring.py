@@ -25,6 +25,7 @@ from providers.aws import CloudWatchProvider
 from providers.veeam import VeeamProvider
 from providers.vmware import VMwareMonitoringProvider
 from services.monitoring_service import create_alert, create_event, model_dict, record_metric, risk_summary, utcnow
+from services.vmware_inventory import compare_vmware_inventory, save_inventory_snapshot
 from services.websocket_manager import noc_manager
 
 router = APIRouter(tags=["Monitoring"])
@@ -420,6 +421,14 @@ def list_hypervisors(db: Session = Depends(get_db), _user: Usuario = Depends(req
     return result
 
 
+@router.get("/api/hypervisors/inventory/compare")
+def vmware_inventory_comparison(
+    db: Session = Depends(get_db),
+    _user: Usuario = Depends(require_permissions("can_view_noc")),
+):
+    return compare_vmware_inventory(db)
+
+
 @router.get("/api/hypervisors/{hypervisor_id}")
 def get_hypervisor(hypervisor_id: int, db: Session = Depends(get_db), _user: Usuario = Depends(require_permissions("can_view_noc"))):
     item = db.query(Hypervisor).filter(Hypervisor.id == hypervisor_id).first()
@@ -466,13 +475,14 @@ async def sync_hypervisor(hypervisor_id: int, db: Session = Depends(get_db), _us
     item.provider, item.last_check = "vmware", utcnow()
     expected = {vm.name for vm in db.query(VirtualMachine).filter(VirtualMachine.hypervisor_id == item.id).all()}
     actual = {vm["name"] for vm in discovered}
+    save_inventory_snapshot(db, item, discovered)
     create_event(db, event_type="hypervisor_synced", source="ESXI", resource=item.name,
         status=item.status, severity="INFO", message=f"Inventario real sincronizado: {len(actual)} VMs",
         site_id=item.site_id, payload={"actual": sorted(actual), "expected": sorted(expected)})
     db.commit()
     return {"hypervisor": model_dict(item), "discovered_vms": discovered,
         "expected_vms": sorted(expected), "missing_from_host": sorted(expected - actual),
-        "unmapped_on_host": sorted(actual - expected)}
+        "unmapped_on_host": sorted(actual - expected), "comparison": compare_vmware_inventory(db)}
 
 
 @router.get("/api/vms")
@@ -978,6 +988,8 @@ SIMULATIONS = {
 
 @router.post("/api/simulation/reset")
 async def reset_simulation(db: Session = Depends(get_db), _user: Usuario = Depends(require_permissions("can_manage_services"))):
+    if not settings.ENABLE_SIMULATION:
+        raise HTTPException(status_code=404, detail="Recurso no disponible")
     db.query(ITService).update({ITService.status: "ONLINE"})
     db.query(VirtualMachine).update({VirtualMachine.power_state: "poweredOn"})
     db.query(PhysicalDevice).update({PhysicalDevice.status: "ONLINE"})
@@ -994,6 +1006,8 @@ async def reset_simulation(db: Session = Depends(get_db), _user: Usuario = Depen
 
 @router.post("/api/simulation/{scenario}")
 async def run_simulation(scenario: str, db: Session = Depends(get_db), _user: Usuario = Depends(require_permissions("can_manage_services"))):
+    if not settings.ENABLE_SIMULATION:
+        raise HTTPException(status_code=404, detail="Recurso no disponible")
     config = SIMULATIONS.get(scenario)
     if not config:
         raise HTTPException(status_code=404, detail="Escenario no encontrado")

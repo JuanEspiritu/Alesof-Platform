@@ -85,6 +85,16 @@ class VirtualMachine(Base):
     last_state_change: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class VMwareInventorySnapshot(Base):
+    __tablename__ = "vmware_inventory_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    hypervisor_id: Mapped[int] = mapped_column(ForeignKey("hypervisors.id"), index=True)
+    discovered_vms: Mapped[list] = mapped_column(JSON, default=list)
+    source: Mapped[str] = mapped_column(String(30), default="VMWARE")
+    collected_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
 class ITService(Base):
     __tablename__ = "it_services"
 

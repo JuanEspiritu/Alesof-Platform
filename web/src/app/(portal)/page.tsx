@@ -285,7 +285,7 @@ export default function LandingPage() {
             <textarea className="scroll-soft min-h-28 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-cyan-500" placeholder="Cuentanos sobre tu red, sedes o proyecto..." />
             <button
               type="button"
-              onClick={() => toast.success("Mensaje registrado para demo. Conecta este formulario a un endpoint o CRM para producción.")}
+              onClick={() => toast.info("El canal de contacto web se encuentra en proceso de habilitacion.")}
               className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-slate-950 text-sm font-black text-white transition hover:bg-black"
             >
               Enviar mensaje <Send className="h-4 w-4" />

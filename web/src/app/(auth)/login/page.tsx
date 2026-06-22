@@ -18,14 +18,7 @@ import {
   Loader2,
   LockKeyhole,
   Network,
-  ShieldCheck,
 } from "lucide-react";
-
-const demoUsers = [
-  { email: "admin@alesof.pe", pass: "Admin2026*", rol: "Admin" },
-  { email: "supervisor@alesof.pe", pass: "Super2026*", rol: "Supervisor" },
-  { email: "tecnico@alesof.pe", pass: "Tecnico2026*", rol: "Tecnico" },
-];
 
 const roleHome: Record<User["rol"], string> = {
   administrador: "/dashboard",
@@ -57,11 +50,6 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }
-
-  function fillDemoCredentials(user: (typeof demoUsers)[number]) {
-    setEmail(user.email);
-    setPassword(user.pass);
   }
 
   return (
@@ -154,28 +142,6 @@ export default function LoginPage() {
             </form>
           </div>
 
-          <div className="mt-4 rounded-2xl border border-white/80 bg-white/85 p-4 shadow-xl shadow-slate-950/8 backdrop-blur">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-teal-700" />
-                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Ambiente demo</p>
-              </div>
-              <p className="text-[11px] font-bold text-slate-400">Solo BD</p>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-3">
-              {demoUsers.map((user) => (
-                <button
-                  key={user.email}
-                  type="button"
-                  onClick={() => fillDemoCredentials(user)}
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left transition hover:border-teal-300 hover:bg-teal-50"
-                >
-                  <p className="text-xs font-black text-slate-900">{user.rol}</p>
-                  <p className="mt-1 truncate text-[11px] text-slate-500">{user.email}</p>
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       </section>
     </main>

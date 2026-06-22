@@ -70,7 +70,7 @@ def sedes(
             "category": "Sede",
             "meta": [
                 {"label": "CIDR", "value": info["cidr"]},
-                {"label": "Equipos", "value": f"{online}/{total_devices or 'demo'} activos"},
+                {"label": "Equipos", "value": f"{online}/{total_devices} activos"},
                 {"label": "Clientes", "value": clients},
                 {"label": "Personal", "value": employees},
             ],

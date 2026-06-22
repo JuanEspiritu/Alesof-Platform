@@ -4,9 +4,10 @@ from datetime import datetime, timedelta, timezone
 
 from core.config import settings
 from core.database import SessionLocal
-from models.monitoring import Alert, Hypervisor, MonitoringAgent, MonitoringMetric, VirtualMachine
+from models.monitoring import Alert, Hypervisor, MonitoringAgent, MonitoringMetric, VirtualMachine, VMwareInventorySnapshot
 from providers.vmware import VMwareMonitoringProvider
 from services.monitoring_service import create_alert, create_event, record_metric, utcnow
+from services.vmware_inventory import save_inventory_snapshot
 from services.websocket_manager import noc_manager
 
 
@@ -30,6 +31,7 @@ async def sync_vmware(db):
         try:
             snapshot = await provider.inspect_host(hypervisor.name)
             discovered = await provider.list_vms(hypervisor.name)
+            save_inventory_snapshot(db, hypervisor, discovered)
             for field in ["status", "cpu_percent", "ram_percent", "datastore_percent", "uptime_seconds", "version", "vmnics_up", "vmnics_down"]:
                 if field in snapshot:
                     setattr(hypervisor, field, snapshot[field])
@@ -104,6 +106,7 @@ async def monitoring_scheduler():
             if time.monotonic() - last_metric_cleanup >= 3600:
                 cutoff = datetime.now(timezone.utc) - timedelta(days=max(settings.METRIC_RETENTION_DAYS, 1))
                 db.query(MonitoringMetric).filter(MonitoringMetric.created_at < cutoff).delete(synchronize_session=False)
+                db.query(VMwareInventorySnapshot).filter(VMwareInventorySnapshot.collected_at < cutoff).delete(synchronize_session=False)
                 db.commit()
                 last_metric_cleanup = time.monotonic()
         finally:

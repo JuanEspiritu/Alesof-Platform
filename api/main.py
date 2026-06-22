@@ -4,7 +4,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import settings
-from core.database import Base, engine
 from routers import auth, clientes, empleados, empresa, facturacion, inventario, monitoring, reportes, soporte
 
 app = FastAPI(title="Alesof Platform API", version="1.0.0")
@@ -30,21 +29,18 @@ app.include_router(monitoring.router)
 
 @app.on_event("startup")
 def on_startup():
-    import models.cliente  # noqa: F401
-    import models.empleado  # noqa: F401
-    import models.equipo  # noqa: F401
-    import models.factura  # noqa: F401
-    import models.ticket  # noqa: F401
-    import models.usuario  # noqa: F401
-    import models.monitoring  # noqa: F401
+    settings.validate_runtime()
+    if settings.AUTO_MIGRATE:
+        from core.migrations import run_migrations
+        run_migrations()
 
-    Base.metadata.create_all(bind=engine)
-
-    from seed import run_seed
-    run_seed()
-
-    from monitoring_seed import run_monitoring_seed
-    run_monitoring_seed()
+    seed_mode = settings.SEED_MODE.lower()
+    if seed_mode == "demo":
+        from seed import run_seed
+        run_seed()
+    if seed_mode in {"demo", "reference"}:
+        from monitoring_seed import run_monitoring_seed
+        run_monitoring_seed(include_demo=seed_mode == "demo")
 
     from services.scheduler import monitoring_scheduler
     app.state.monitoring_task = asyncio.create_task(monitoring_scheduler())

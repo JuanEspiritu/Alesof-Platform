@@ -38,7 +38,7 @@ def upsert(db, model, lookup: dict, values: dict):
     return item
 
 
-def run_monitoring_seed():
+def run_monitoring_seed(include_demo: bool = True):
     db = SessionLocal()
     try:
         legacy_asset = db.query(Equipo).filter(Equipo.marca == "Huawei").first()
@@ -105,7 +105,7 @@ def run_monitoring_seed():
             })
 
         _seed_vms_and_services(db, sites, hypervisors)
-        _seed_devices_and_operations(db, sites)
+        _seed_devices_and_operations(db, sites, include_demo)
         db.commit()
     finally:
         db.close()
@@ -114,7 +114,8 @@ def run_monitoring_seed():
 def _seed_vms_and_services(db, sites, hypervisors):
     for old_name, new_name in {
         "HAPROXY": "HAProxy",
-        "ZABBIX-LIMA": "ZABBIX-LIMA-01",
+        "ZABBIX-LIMA": "MON-LIMA-01",
+        "ZABBIX-LIMA-01": "MON-LIMA-01",
         "VCENTER-LIMA": "VC-LIMA-01",
     }.items():
         legacy = db.query(VirtualMachine).filter(VirtualMachine.name == old_name).first()
@@ -125,6 +126,9 @@ def _seed_vms_and_services(db, sites, hypervisors):
     legacy_db_vm = db.query(VirtualMachine).filter(VirtualMachine.name == "DB-LIMA-01", VirtualMachine.ip == "10.10.30.20").first()
     if legacy_db_vm:
         legacy_db_vm.ip = "10.10.30.30"
+    legacy_dhcp_vm = db.query(VirtualMachine).filter(VirtualMachine.name == "DHCP-LIMA-01", VirtualMachine.ip == "10.10.30.30").first()
+    if legacy_dhcp_vm:
+        legacy_dhcp_vm.ip = "10.10.30.31"
     specs = [
         ("Router-Master", "ESXi-01", "10.10.10.2", "Ubuntu Server 22.04", 2, 4, 30, "VLAN10", "Gateway principal", "CRITICAL"),
         ("Router-Backup", "ESXi-01", "10.10.10.3", "Ubuntu Server 22.04", 2, 4, 30, "VLAN10", "Gateway de respaldo", "CRITICAL"),
@@ -134,16 +138,17 @@ def _seed_vms_and_services(db, sites, hypervisors):
         ("SW-LIMA-CORE-02", "ESXi-01", "10.10.10.12", "Virtual Network Appliance", 2, 4, 20, "VLAN10", "Switch core virtual", "CRITICAL"),
         ("AD-LIMA-01", "ESXi-02", "10.10.30.10", "Windows Server 2022 (Data-WinServer)", 4, 8, 100, "VLAN30", "Active Directory", "CRITICAL"),
         ("DB-LIMA-01", "ESXi-02", "10.10.30.30", "Ubuntu Server 22.04", 4, 8, 150, "VLAN30", "Base de datos MySQL", "CRITICAL"),
-        ("DHCP-LIMA-01", "ESXi-02", "10.10.30.30", "Windows Server 2022", 2, 4, 60, "VLAN30", "DHCP", "HIGH"),
+        ("DHCP-LIMA-01", "ESXi-02", "10.10.30.31", "Windows Server 2022", 2, 4, 60, "VLAN30", "DHCP", "HIGH"),
         ("GLPI-LIMA-01", "ESXi-02", "10.10.30.40", "Ubuntu Server 22.04", 4, 8, 100, "VLAN30", "Gestion de activos GLPI", "HIGH"),
         ("PBX-LIMA-01", "ESXi-02", "10.10.40.10", "Linux / FreePBX", 2, 4, 80, "VLAN40", "Telefonia IP", "HIGH"),
-        ("ZABBIX-LIMA-01", "ESXi-02", "10.10.70.10", "Ubuntu Server 22.04", 4, 8, 120, "VLAN70", "Monitoreo Zabbix", "CRITICAL"),
+        ("MON-LIMA-01", "ESXi-02", "10.10.70.10", "Ubuntu Server 22.04", 4, 8, 120, "VLAN70", "Monitoreo Zabbix", "CRITICAL"),
         ("APP-LIMA-01", "ESXi-03", "10.10.30.50", "Ubuntu Server 22.04", 4, 8, 100, "VLAN30", "Application Service", "CRITICAL"),
         ("FILE-LIMA-01", "ESXi-03", "10.10.30.60", "Windows Server 2022", 4, 12, 500, "VLAN30", "File Sharing", "HIGH"),
         ("HAProxy", "ESXi-03", "10.10.90.10", "Ubuntu Server 22.04", 2, 4, 40, "VLAN90", "HAProxy Reverse Proxy", "CRITICAL"),
         ("WEB-LIMA-01", "ESXi-03", "10.10.90.20", "Ubuntu Server 22.04", 2, 4, 60, "VLAN90", "Public Web", "HIGH"),
         ("MAIL-LIMA-01", "ESXi-03", "10.10.90.30", "Ubuntu Server 22.04", 4, 8, 200, "VLAN90", "Mail Service", "HIGH"),
         ("DNS2-LIMA-01", "ESXi-03", "10.10.90.40", "Ubuntu Server 22.04", 2, 2, 30, "VLAN90", "Public DNS", "HIGH"),
+        ("Veeam-Proxy", "ESXi-03", "10.10.80.30", "Windows Server 2022", 4, 8, 120, "VLAN80", "Proxy de respaldos Veeam", "HIGH"),
     ]
     for name, host, ip, os_name, cpu, ram, disk, vlan, service, criticality in specs:
         vms[name] = upsert(db, VirtualMachine, {"name": name}, {
@@ -158,6 +163,9 @@ def _seed_vms_and_services(db, sites, hypervisors):
     legacy_db_service = db.query(ITService).filter(ITService.name == "Alesof Database").first()
     if legacy_db_service and legacy_db_service.host == "10.10.30.20":
         legacy_db_service.host, legacy_db_service.port = "10.10.30.30", 3306
+    legacy_dhcp_service = db.query(ITService).filter(ITService.name == "DHCP", ITService.host == "10.10.30.30").first()
+    if legacy_dhcp_service:
+        legacy_dhcp_service.host = "10.10.30.31"
     service_specs = [
         ("Alesof Web Platform", "WEB", "Trujillo", None, "alesof.pe", 443, "HTTPS", "PUBLIC", "CLOUD", "CRITICAL"),
         ("Alesof Backend API", "API", "Trujillo", None, "api.alesof.pe", 443, "HTTPS", "PUBLIC", "CLOUD", "CRITICAL"),
@@ -170,10 +178,10 @@ def _seed_vms_and_services(db, sites, hypervisors):
         ("DNS2-LIMA-01 Public DNS", "DNS", "Lima", "DNS2-LIMA-01", "10.10.90.40", 53, "DNS", "DMZ", "VLAN90", "HIGH"),
         ("Active Directory", "IDENTITY", "Lima", "AD-LIMA-01", "10.10.30.10", 389, "TCP", "INTERNAL", "VLAN30", "CRITICAL"),
         ("DNS Interno", "DNS", "Lima", "AD-LIMA-01", "10.10.30.10", 53, "DNS", "INTERNAL", "VLAN30", "HIGH"),
-        ("DHCP", "NETWORK", "Lima", "DHCP-LIMA-01", "10.10.30.30", 67, "UDP", "INTERNAL", "VLAN30", "HIGH"),
+        ("DHCP", "NETWORK", "Lima", "DHCP-LIMA-01", "10.10.30.31", 67, "UDP", "INTERNAL", "VLAN30", "HIGH"),
         ("GLPI", "ITSM", "Lima", "GLPI-LIMA-01", "10.10.30.40", 443, "HTTPS", "INTERNAL", "VLAN30", "HIGH"),
         ("FreePBX", "TELEPHONY", "Lima", "PBX-LIMA-01", "10.10.40.10", 5060, "UDP", "INTERNAL", "VLAN40", "HIGH"),
-        ("Zabbix", "MONITORING", "Lima", "ZABBIX-LIMA-01", "10.10.70.10", 10051, "TCP", "INTERNAL", "VLAN70", "CRITICAL"),
+        ("Zabbix", "MONITORING", "Lima", "MON-LIMA-01", "10.10.70.10", 10051, "TCP", "INTERNAL", "VLAN70", "CRITICAL"),
         ("Veeam", "BACKUP", "Lima", None, "10.10.80.20", 9392, "TCP", "INTERNAL", "VLAN80", "HIGH"),
         ("TrueNAS", "STORAGE", "Lima", None, "10.10.80.10", 2049, "TCP", "INTERNAL", "VLAN80", "CRITICAL"),
         ("vCenter", "VIRTUALIZATION", "Lima", "VC-LIMA-01", "10.10.50.10", 443, "HTTPS", "INTERNAL", "VLAN50", "CRITICAL"),
@@ -212,7 +220,7 @@ def _seed_vms_and_services(db, sites, hypervisors):
         db.delete(legacy_hypervisor)
 
 
-def _seed_devices_and_operations(db, sites):
+def _seed_devices_and_operations(db, sites, include_demo: bool):
     legacy_esxi_device = db.query(PhysicalDevice).filter(PhysicalDevice.name == "ESXI-LIMA-01").first()
     if legacy_esxi_device:
         db.query(Alert).filter(Alert.device_id == legacy_esxi_device.id).update({"device_id": None}, synchronize_session=False)
@@ -246,10 +254,11 @@ def _seed_devices_and_operations(db, sites):
         ("Network configs", "Routers y switches", "CONFIG", "Git + AWS S3", "Diario 01:00"),
     ]:
         upsert(db, BackupJob, {"name": name}, {
-            "protected_resource": resource, "backup_type": btype, "status": "SUCCESS",
+            "protected_resource": resource, "backup_type": btype, "status": "SUCCESS" if include_demo else "NOT_EXECUTED",
             "repository": repository, "offsite_target": "AWS S3", "rto_hours": 4,
             "rpo_hours": 24, "retention_days": 30, "schedule": schedule,
-            "last_run": now() - timedelta(hours=8), "last_restore_test": now() - timedelta(days=14),
+            "last_run": now() - timedelta(hours=8) if include_demo else None,
+            "last_restore_test": now() - timedelta(days=14) if include_demo else None,
         })
 
     for name, category, status, risk, recommendation in [
@@ -265,9 +274,10 @@ def _seed_devices_and_operations(db, sites):
         ("SSL HAProxy", "CERTIFICATES", "IN_REVIEW", "HIGH", "Instalar certificado publico y monitorear vencimiento."),
     ]:
         upsert(db, SecurityControl, {"name": name}, {
-            "category": category, "status": status, "risk": risk, "owner": "Seguridad TI",
-            "evidence": "Registro interno Alesof", "recommendation": recommendation,
-            "last_audit": now() - timedelta(days=7),
+            "category": category, "status": status if include_demo else "IN_REVIEW", "risk": risk, "owner": "Seguridad TI",
+            "evidence": "Registro interno Alesof" if include_demo else "Pendiente",
+            "recommendation": recommendation,
+            "last_audit": now() - timedelta(days=7) if include_demo else None,
         })
 
     for name, source, resource, severity, priority in [
@@ -283,7 +293,7 @@ def _seed_devices_and_operations(db, sites):
             "ticket_priority": priority, "enabled": True, "auto_assign_department": "Soporte",
         })
 
-    if db.query(Alert).count() == 0:
+    if include_demo and db.query(Alert).count() == 0:
         db.add(Alert(
             title="MFA administrativo pendiente",
             description="Las cuentas privilegiadas aun no tienen MFA obligatorio.",
